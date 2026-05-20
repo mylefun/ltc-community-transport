@@ -1,0 +1,460 @@
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function rootUrl() {
+  const raw = process.env.SUPABASE_URL || "";
+  return raw.replace(/\/rest\/v1\/?$/, "").replace(/\/$/, "");
+}
+
+function apiKey() {
+  return (
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_PUBLISHABLE_KEY ||
+    ""
+  );
+}
+
+function todayKey(date = new Date()) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+function localTime(date = new Date()) {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function addMinutes(minutes) {
+  return localTime(new Date(Date.now() + minutes * 60_000));
+}
+
+function timeOnly(value) {
+  if (!value) return "";
+  return String(value).slice(0, 5);
+}
+
+function iso(value) {
+  return value ? new Date(value).toISOString() : "";
+}
+
+async function supabase(path, options = {}) {
+  const url = rootUrl();
+  const key = apiKey();
+
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SECRET_KEY");
+  }
+
+  const response = await fetch(`${url}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Supabase ${response.status}: ${detail}`);
+  }
+
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function rpc(name, body) {
+  const url = rootUrl();
+  const key = apiKey();
+
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SECRET_KEY");
+  }
+
+  const response = await fetch(`${url}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Supabase RPC ${response.status}: ${detail}`);
+  }
+
+  return response.json();
+}
+
+function demoDrivers() {
+  return [
+    {
+      display_name: "林志明",
+      phone: "0912-118-205",
+      vehicle_no: "KAA-1032",
+      route_label: "A 線",
+      quick_login_code_hash: "1357",
+      active: true,
+    },
+    {
+      display_name: "吳佳玲",
+      phone: "0928-772-481",
+      vehicle_no: "KAB-2210",
+      route_label: "B 線",
+      quick_login_code_hash: "2468",
+      active: true,
+    },
+    {
+      display_name: "陳建宏",
+      phone: "0936-458-119",
+      vehicle_no: "KAC-5198",
+      route_label: "C 線",
+      quick_login_code_hash: "9753",
+      active: true,
+    },
+  ];
+}
+
+function demoCases() {
+  return [
+    {
+      case_no: "LTC-001",
+      full_name: "李美玉",
+      phone: "02-2345-1101",
+      emergency_contact: "李小姐",
+      emergency_phone: "0910-552-001",
+      care_level: "長照2.0 4級",
+      mobility_type: "輪椅",
+      pickup_address: "台北市中正區和平西路一段 38 號",
+      default_destination: "松柏日照中心",
+      notes: "需協助輪椅固定，上車前請電話通知家屬。",
+      active: true,
+    },
+    {
+      case_no: "LTC-002",
+      full_name: "王進財",
+      phone: "02-2755-8020",
+      emergency_contact: "王太太",
+      emergency_phone: "0922-810-334",
+      care_level: "長照2.0 3級",
+      mobility_type: "需攙扶",
+      pickup_address: "台北市大安區信義路三段 91 巷 6 號",
+      default_destination: "仁愛復能診所",
+      notes: "聽力較弱，抵達時請慢慢說明。",
+      active: true,
+    },
+    {
+      case_no: "LTC-003",
+      full_name: "張阿月",
+      phone: "02-2368-7712",
+      emergency_contact: "張先生",
+      emergency_phone: "0988-610-741",
+      care_level: "長照2.0 5級",
+      mobility_type: "輪椅",
+      pickup_address: "台北市萬華區西園路二段 122 號",
+      default_destination: "和平醫院復健科",
+      notes: "回程可能有藥袋，請提醒個案攜帶健保卡。",
+      active: true,
+    },
+    {
+      case_no: "LTC-004",
+      full_name: "周秀琴",
+      phone: "02-2302-6168",
+      emergency_contact: "周小姐",
+      emergency_phone: "0963-215-618",
+      care_level: "長照2.0 2級",
+      mobility_type: "可自行上下車",
+      pickup_address: "台北市中山區龍江路 55 巷 8 號",
+      default_destination: "長青據點",
+      notes: "固定週三參與據點課程。",
+      active: true,
+    },
+    {
+      case_no: "LTC-005",
+      full_name: "黃宗義",
+      phone: "02-2558-9200",
+      emergency_contact: "黃先生",
+      emergency_phone: "0919-402-885",
+      care_level: "長照2.0 4級",
+      mobility_type: "需攙扶",
+      pickup_address: "台北市士林區文林路 320 號",
+      default_destination: "陽明日照中心",
+      notes: "上午血糖較低，請確認已用早餐。",
+      active: true,
+    },
+  ];
+}
+
+async function seedIfEmpty() {
+  const existingDrivers = await supabase("drivers?select=id&limit=1");
+  const existingCases = await supabase("cases?select=id&limit=1");
+
+  if (existingDrivers.length && existingCases.length) return;
+
+  const drivers = await supabase("drivers", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(demoDrivers()),
+  });
+
+  const cases = await supabase("cases", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(demoCases()),
+  });
+
+  const driverByRoute = Object.fromEntries(drivers.map((driver) => [driver.route_label, driver]));
+  const caseByNo = Object.fromEntries(cases.map((person) => [person.case_no, person]));
+  const serviceDate = todayKey();
+
+  const rides = [
+    ridePayload(serviceDate, caseByNo["LTC-001"], driverByRoute["A 線"], addMinutes(-55), addMinutes(-25), "日照接送", {
+      pickup_at: new Date(Date.now() - 50 * 60_000).toISOString(),
+      dropoff_at: new Date(Date.now() - 24 * 60_000).toISOString(),
+      pickup_lat: 25.0268,
+      pickup_lng: 121.5199,
+      dropoff_lat: 25.0362,
+      dropoff_lng: 121.5278,
+    }),
+    ridePayload(serviceDate, caseByNo["LTC-002"], driverByRoute["A 線"], addMinutes(-15), addMinutes(12), "復健門診", {
+      pickup_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+      pickup_lat: 25.0322,
+      pickup_lng: 121.5397,
+    }),
+    ridePayload(serviceDate, caseByNo["LTC-003"], driverByRoute["B 線"], addMinutes(-18), addMinutes(12), "復健治療"),
+    ridePayload(serviceDate, caseByNo["LTC-004"], driverByRoute["C 線"], addMinutes(18), addMinutes(46), "據點活動"),
+    ridePayload(serviceDate, caseByNo["LTC-005"], driverByRoute["B 線"], addMinutes(35), addMinutes(68), "日照接送"),
+  ];
+
+  await supabase("daily_rides", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(rides),
+  });
+}
+
+function ridePayload(serviceDate, person, driver, pickup, dropoff, purpose, overrides = {}) {
+  return {
+    service_date: serviceDate,
+    case_id: person.id,
+    driver_id: driver.id,
+    scheduled_pickup: pickup,
+    scheduled_dropoff: dropoff,
+    pickup_address: person.pickup_address,
+    destination_address: person.default_destination,
+    purpose,
+    ...overrides,
+  };
+}
+
+async function readState() {
+  await seedIfEmpty();
+
+  const serviceDate = todayKey();
+  const [drivers, cases, trips, locations] = await Promise.all([
+    supabase("drivers?select=*&order=route_label.asc"),
+    supabase("cases?select=*&order=case_no.asc"),
+    supabase(`daily_rides?select=*&service_date=eq.${serviceDate}&order=scheduled_pickup.asc`),
+    supabase("driver_locations?select=*"),
+  ]);
+
+  return {
+    serviceDate,
+    drivers: drivers.map(mapDriver),
+    cases: cases.map(mapCase),
+    trips: trips.map(mapTrip),
+    driverLocations: mapLocations(locations),
+    events: [],
+    backend: "supabase",
+  };
+}
+
+function mapDriver(driver) {
+  return {
+    id: driver.id,
+    name: driver.display_name,
+    phone: driver.phone || "",
+    vehicleNo: driver.vehicle_no,
+    routeLabel: driver.route_label || "",
+    pin: driver.quick_login_code_hash || "",
+    active: driver.active,
+  };
+}
+
+function mapCase(person) {
+  return {
+    id: person.id,
+    caseNo: person.case_no,
+    name: person.full_name,
+    phone: person.phone || "",
+    emergencyContact: person.emergency_contact || "",
+    emergencyPhone: person.emergency_phone || "",
+    careLevel: person.care_level || "",
+    mobility: person.mobility_type || "",
+    pickupAddress: person.pickup_address,
+    destinationAddress: person.default_destination,
+    note: person.notes || "",
+    active: person.active,
+  };
+}
+
+function mapTrip(trip) {
+  return {
+    id: trip.id,
+    serviceDate: trip.service_date,
+    caseId: trip.case_id,
+    driverId: trip.driver_id,
+    scheduledPickup: timeOnly(trip.scheduled_pickup),
+    scheduledDropoff: timeOnly(trip.scheduled_dropoff),
+    pickupTime: trip.pickup_at ? localTime(new Date(trip.pickup_at)) : "",
+    pickupAt: iso(trip.pickup_at),
+    pickupLocation: trip.pickup_lat && trip.pickup_lng ? locationObject(trip.pickup_lat, trip.pickup_lng, "gps") : null,
+    dropoffTime: trip.dropoff_at ? localTime(new Date(trip.dropoff_at)) : "",
+    dropoffAt: iso(trip.dropoff_at),
+    dropoffLocation: trip.dropoff_lat && trip.dropoff_lng ? locationObject(trip.dropoff_lat, trip.dropoff_lng, "gps") : null,
+    purpose: trip.purpose || "",
+    status: trip.status,
+  };
+}
+
+function mapLocations(locations) {
+  return locations.reduce((items, location) => {
+    items[location.driver_id] = {
+      lat: Number(location.latitude),
+      lng: Number(location.longitude),
+      accuracy: location.accuracy_meters || 0,
+      source: location.location_source || "gps",
+      updatedAt: iso(location.updated_at),
+      eventType: location.event_type || "heartbeat",
+      tripId: location.ride_id || "",
+    };
+    return items;
+  }, {});
+}
+
+function locationObject(lat, lng, source, accuracy = 0) {
+  return {
+    lat: Number(lat),
+    lng: Number(lng),
+    accuracy,
+    source,
+  };
+}
+
+async function handleAction(action, payload = {}) {
+  if (action === "assign_driver") {
+    await supabase(`daily_rides?id=eq.${encodeURIComponent(payload.tripId)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ driver_id: payload.driverId }),
+    });
+  }
+
+  if (action === "create_case") {
+    const person = await supabase("cases", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        case_no: payload.case.caseNo,
+        full_name: payload.case.name,
+        phone: payload.case.phone,
+        care_level: payload.case.careLevel,
+        mobility_type: payload.case.mobility,
+        pickup_address: payload.case.pickupAddress,
+        default_destination: payload.case.destinationAddress,
+        notes: payload.case.note,
+        active: true,
+      }),
+    });
+
+    if (payload.trip) {
+      await supabase("daily_rides", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          service_date: todayKey(),
+          case_id: person[0].id,
+          driver_id: payload.trip.driverId,
+          scheduled_pickup: payload.trip.scheduledPickup,
+          scheduled_dropoff: payload.trip.scheduledDropoff,
+          pickup_address: payload.case.pickupAddress,
+          destination_address: payload.case.destinationAddress,
+          purpose: "日照接送",
+        }),
+      });
+    }
+  }
+
+  if (action === "toggle_case") {
+    await supabase(`cases?id=eq.${encodeURIComponent(payload.caseId)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ active: payload.active }),
+    });
+  }
+
+  if (action === "create_trip") {
+    const person = await supabase(`cases?select=*&id=eq.${encodeURIComponent(payload.caseId)}&limit=1`);
+    if (!person[0]) throw new Error("Case not found");
+
+    await supabase("daily_rides", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        service_date: todayKey(),
+        case_id: person[0].id,
+        driver_id: payload.driverId,
+        scheduled_pickup: addMinutes(30),
+        scheduled_dropoff: addMinutes(60),
+        pickup_address: person[0].pickup_address,
+        destination_address: person[0].default_destination,
+        purpose: "臨時接送",
+      }),
+    });
+  }
+
+  if (action === "pickup") {
+    await rpc("mark_ride_pickup", rpcPayload(payload));
+  }
+
+  if (action === "dropoff") {
+    await rpc("mark_ride_dropoff", rpcPayload(payload));
+  }
+
+  return readState();
+}
+
+function rpcPayload(payload) {
+  return {
+    p_ride_id: payload.tripId,
+    p_lat: payload.location?.lat ?? null,
+    p_lng: payload.location?.lng ?? null,
+    p_accuracy_meters: payload.location?.accuracy ?? null,
+    p_location_source: payload.location?.source || "gps",
+  };
+}
+
+export default async function handler(req, res) {
+  try {
+    if (req.method === "GET") {
+      res.status(200).json({ ok: true, state: await readState() });
+      return;
+    }
+
+    if (req.method === "POST") {
+      const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      res.status(200).json({ ok: true, state: await handleAction(body.action, body.payload) });
+      return;
+    }
+
+    res.setHeader("Allow", "GET, POST");
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+}

@@ -36,6 +36,8 @@ let filters = {
   driver: "all",
   status: "all",
 };
+let dataMode = "local";
+let dataMessage = "本機示範資料";
 
 let state = loadState();
 state = normalizeState(state);
@@ -134,6 +136,57 @@ function rollToToday(previous) {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+async function loadRemoteState() {
+  const response = await fetch("/api/state", {
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (!payload.ok) {
+    throw new Error(payload.error || "API failed");
+  }
+
+  state = normalizeState(payload.state);
+  dataMode = "supabase";
+  dataMessage = "Supabase 已連線";
+  saveState();
+}
+
+async function apiAction(action, payload = {}) {
+  if (dataMode !== "supabase") return false;
+
+  const response = await fetch("/api/state", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ action, payload }),
+  });
+
+  const result = await response.json();
+  if (!response.ok || !result.ok) {
+    throw new Error(result.error || `API ${response.status}`);
+  }
+
+  state = normalizeState(result.state);
+  saveState();
+  return true;
+}
+
+function updateConnectionState() {
+  const target = document.querySelector(".connection-state span:last-child");
+  const dot = document.querySelector(".connection-state .dot");
+  if (!target || !dot) return;
+  target.textContent = dataMessage;
+  dot.classList.toggle("online", dataMode === "supabase");
+  dot.classList.toggle("local", dataMode !== "supabase");
 }
 
 function defaultState() {
@@ -430,6 +483,7 @@ function render() {
     button.classList.toggle("active", button.dataset.view === activeView);
   });
   document.getElementById("viewTitle").textContent = viewTitles[activeView];
+  updateConnectionState();
 
   if (activeView === "dashboard") renderDashboard();
   if (activeView === "cases") renderCases();
@@ -495,6 +549,16 @@ function renderDashboard() {
     if (!event.target.matches(".driver-select")) return;
     const trip = state.trips.find((item) => item.id === event.target.dataset.tripId);
     if (!trip) return;
+    const nextDriverId = event.target.value;
+    if (dataMode === "supabase") {
+      apiAction("assign_driver", { tripId: trip.id, driverId: nextDriverId })
+        .then(() => renderDashboard())
+        .catch((error) => {
+          dataMessage = `更新失敗：${error.message}`;
+          renderDashboard();
+        });
+      return;
+    }
     trip.driverId = event.target.value;
     saveState();
     renderDashboard();
@@ -700,7 +764,7 @@ function renderCaseCard(person) {
   `;
 }
 
-function handleCaseSubmit(event) {
+async function handleCaseSubmit(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const newCase = {
@@ -717,6 +781,26 @@ function handleCaseSubmit(event) {
     note: String(form.get("note")).trim(),
     active: true,
   };
+
+  if (dataMode === "supabase") {
+    try {
+      await apiAction("create_case", {
+        case: newCase,
+        trip: form.get("createTrip")
+          ? {
+              driverId: String(form.get("driverId")),
+              scheduledPickup: String(form.get("scheduledPickup")),
+              scheduledDropoff: String(form.get("scheduledDropoff")),
+            }
+          : null,
+      });
+      renderCases();
+    } catch (error) {
+      dataMessage = `新增失敗：${error.message}`;
+      renderCases();
+    }
+    return;
+  }
 
   state.cases.push(newCase);
 
@@ -743,12 +827,32 @@ function handleCaseSubmit(event) {
   renderCases();
 }
 
-function handleCaseAction(event) {
+async function handleCaseAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
 
   const person = state.cases.find((item) => item.id === button.dataset.caseId);
   if (!person) return;
+
+  if (dataMode === "supabase") {
+    try {
+      if (button.dataset.action === "toggle") {
+        await apiAction("toggle_case", { caseId: person.id, active: !person.active });
+      }
+
+      if (button.dataset.action === "trip") {
+        await apiAction("create_trip", {
+          caseId: person.id,
+          driverId: state.drivers[0]?.id ?? "",
+        });
+      }
+      renderCases();
+    } catch (error) {
+      dataMessage = `更新失敗：${error.message}`;
+      renderCases();
+    }
+    return;
+  }
 
   if (button.dataset.action === "toggle") {
     person.active = !person.active;
@@ -945,6 +1049,16 @@ async function handleDriverTaskClick(event) {
     button.disabled = true;
     button.textContent = "定位中";
     const location = await captureDriverLocation(activeDriverId, trip.id, "pickup");
+    if (dataMode === "supabase") {
+      try {
+        await apiAction("pickup", { tripId: trip.id, location });
+        renderDriverWorkspace();
+      } catch (error) {
+        dataMessage = `打卡失敗：${error.message}`;
+        renderDriverWorkspace();
+      }
+      return;
+    }
     trip.pickupTime = localTime();
     trip.pickupAt = new Date().toISOString();
     trip.pickupLocation = location;
@@ -964,6 +1078,16 @@ async function handleDriverTaskClick(event) {
     button.disabled = true;
     button.textContent = "定位中";
     const location = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
+    if (dataMode === "supabase") {
+      try {
+        await apiAction("dropoff", { tripId: trip.id, location });
+        renderDriverWorkspace();
+      } catch (error) {
+        dataMessage = `打卡失敗：${error.message}`;
+        renderDriverWorkspace();
+      }
+      return;
+    }
     trip.dropoffTime = localTime();
     trip.dropoffAt = new Date().toISOString();
     trip.dropoffLocation = location;
@@ -1067,7 +1191,7 @@ function updateClock() {
   document.getElementById("clock").textContent = localTime();
 }
 
-function init() {
+async function init() {
   document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("zh-TW", {
     year: "numeric",
     month: "2-digit",
@@ -1082,7 +1206,18 @@ function init() {
     });
   });
 
-  document.getElementById("resetDemoBtn").addEventListener("click", () => {
+  document.getElementById("resetDemoBtn").addEventListener("click", async () => {
+    if (dataMode === "supabase") {
+      try {
+        await loadRemoteState();
+        render();
+      } catch (error) {
+        dataMessage = `重新載入失敗：${error.message}`;
+        render();
+      }
+      return;
+    }
+
     state = defaultState();
     filters = { driver: "all", status: "all" };
     activeDriverId = "";
@@ -1095,6 +1230,12 @@ function init() {
 
   updateClock();
   setInterval(updateClock, 15_000);
+  try {
+    await loadRemoteState();
+  } catch {
+    dataMode = "local";
+    dataMessage = "本機示範資料";
+  }
   render();
 }
 

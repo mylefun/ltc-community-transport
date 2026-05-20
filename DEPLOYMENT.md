@@ -1,6 +1,6 @@
 # GitHub、Supabase、Vercel 部署教學
 
-這個專案目前是純前端靜態原型，可直接部署到 Vercel。資料庫正式化時，先在 Supabase 建表，再把前端從 `localStorage` 改為呼叫 Supabase API / RPC。
+這個專案可直接部署到 Vercel。線上環境會透過 Vercel serverless API 連接 Supabase；本機沒有 API 時會自動退回 `localStorage` 示範模式。
 
 ## 1. 推到 GitHub
 
@@ -49,8 +49,8 @@ gh repo create ltc-community-transport --source=. --private --push
    - 司機帳號：角色設為 `driver`，並在 `profiles.driver_id` 對應到 `drivers.id`。
 5. 到 Project Settings 找到 API 設定，取得：
    - Project URL
-   - anon / publishable key
-6. 前端正式串接時，只能使用 anon / publishable key；不要把 `service_role` key 放到前端或 GitHub。
+   - secret key
+6. `secret key` 只能放在 Vercel 環境變數，不要放到前端、GitHub 或任何公開位置。
 
 ### 建議先建立測試資料
 
@@ -85,7 +85,7 @@ https://ltc-community-transport.vercel.app
 
 ## 4. Vercel 環境變數
 
-如果後續把前端改成讀 Supabase，請在 Vercel 專案：
+請在 Vercel 專案：
 
 1. 進入 `Settings`。
 2. 選 `Environment Variables`。
@@ -93,14 +93,16 @@ https://ltc-community-transport.vercel.app
 
 ```text
 SUPABASE_URL
-SUPABASE_ANON_KEY
+SUPABASE_SECRET_KEY
 ```
 
-目前這個純靜態版本尚未讀取 `.env`，因此部署原型時可以先不用設定環境變數。
+`SUPABASE_URL` 請填專案根網址，例如 `https://xxxxx.supabase.co`，不要填 `/rest/v1/`。
+
+`SUPABASE_SECRET_KEY` 是 serverless API 用的伺服器端金鑰。它不會被前端打包，但仍然不能提交到 GitHub。
 
 ## 5. 正式串接 Supabase 時的前端流程
 
-司機按鈕應呼叫：
+司機按鈕會透過 `/api/state` 間接呼叫：
 
 ```js
 await supabase.rpc("mark_ride_pickup", {
@@ -137,6 +139,7 @@ order by scheduled_pickup;
 ## 6. 上線前注意事項
 
 - 不要把 `.env`、service role key、資料庫密碼推到 GitHub。
+- 如果 secret key 曾經貼到聊天、文件或截圖中，請到 Supabase 立即 revoke / rotate。
 - 司機定位屬於個資與工作軌跡，正式上線前應告知司機定位用途與保存期間。
-- 建議承辦人使用完整帳密登入；司機 PIN 可作為快速入口，但正式版仍應搭配 Supabase Auth。
+- 目前 Vercel API 是原型用橋接，正式上線前建議加上 Supabase Auth 或後台登入權限。
 - RLS 已在 `supabase-schema.sql` 開啟，正式資料請不要關閉 RLS。
