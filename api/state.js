@@ -111,26 +111,26 @@ function demoDrivers() {
   return [
     {
       display_name: "林志明",
+      identity_no: "A123456789",
       phone: "0912-118-205",
       vehicle_no: "KAA-1032",
-      route_label: "A 線",
-      quick_login_code_hash: "1357",
+      quick_login_code_hash: "135790",
       active: true,
     },
     {
       display_name: "吳佳玲",
+      identity_no: "B223456789",
       phone: "0928-772-481",
       vehicle_no: "KAB-2210",
-      route_label: "B 線",
-      quick_login_code_hash: "2468",
+      quick_login_code_hash: "246802",
       active: true,
     },
     {
       display_name: "陳建宏",
+      identity_no: "C323456789",
       phone: "0936-458-119",
       vehicle_no: "KAC-5198",
-      route_label: "C 線",
-      quick_login_code_hash: "9753",
+      quick_login_code_hash: "975310",
       active: true,
     },
   ];
@@ -207,7 +207,7 @@ function demoCases() {
 }
 
 async function seedIfEmpty() {
-  let drivers = await supabase("drivers?select=*&order=route_label.asc");
+  let drivers = await supabase("drivers?select=*&order=display_name.asc");
   let cases = await supabase("cases?select=*&order=case_no.asc");
 
   if (!drivers.length) {
@@ -229,12 +229,11 @@ async function seedIfEmpty() {
   const existingRides = await supabase(`daily_rides?select=id&service_date=eq.${todayKey()}&limit=1`);
   if (existingRides.length) return;
 
-  const driverByRoute = Object.fromEntries(drivers.map((driver) => [driver.route_label, driver]));
   const caseByNo = Object.fromEntries(cases.map((person) => [person.case_no, person]));
   const serviceDate = todayKey();
 
   const rides = [
-    ridePayload(serviceDate, caseByNo["LTC-001"], driverByRoute["A 線"], addMinutes(-55), addMinutes(-25), "日照接送", {
+    ridePayload(serviceDate, caseByNo["LTC-001"], drivers[0], addMinutes(-55), addMinutes(-25), "日照接送", {
       pickup_at: new Date(Date.now() - 50 * 60_000).toISOString(),
       dropoff_at: new Date(Date.now() - 24 * 60_000).toISOString(),
       pickup_lat: 25.0268,
@@ -242,14 +241,14 @@ async function seedIfEmpty() {
       dropoff_lat: 25.0362,
       dropoff_lng: 121.5278,
     }),
-    ridePayload(serviceDate, caseByNo["LTC-002"], driverByRoute["A 線"], addMinutes(-15), addMinutes(12), "復健門診", {
+    ridePayload(serviceDate, caseByNo["LTC-002"], drivers[0], addMinutes(-15), addMinutes(12), "復健門診", {
       pickup_at: new Date(Date.now() - 10 * 60_000).toISOString(),
       pickup_lat: 25.0322,
       pickup_lng: 121.5397,
     }),
-    ridePayload(serviceDate, caseByNo["LTC-003"], driverByRoute["B 線"], addMinutes(-18), addMinutes(12), "復健治療"),
-    ridePayload(serviceDate, caseByNo["LTC-004"], driverByRoute["C 線"], addMinutes(18), addMinutes(46), "據點活動"),
-    ridePayload(serviceDate, caseByNo["LTC-005"], driverByRoute["B 線"], addMinutes(35), addMinutes(68), "日照接送"),
+    ridePayload(serviceDate, caseByNo["LTC-003"], drivers[1], addMinutes(-18), addMinutes(12), "復健治療"),
+    ridePayload(serviceDate, caseByNo["LTC-004"], drivers[2], addMinutes(18), addMinutes(46), "據點活動"),
+    ridePayload(serviceDate, caseByNo["LTC-005"], drivers[1], addMinutes(35), addMinutes(68), "日照接送"),
   ];
 
   await supabase("daily_rides", {
@@ -280,7 +279,7 @@ async function readState() {
 
   const serviceDate = todayKey();
   const [drivers, cases, trips, locations] = await Promise.all([
-    supabase("drivers?select=*&order=route_label.asc"),
+    supabase("drivers?select=*&order=display_name.asc"),
     supabase("cases?select=*&order=case_no.asc"),
     supabase(`daily_rides?select=*&service_date=eq.${serviceDate}&order=scheduled_pickup.asc`),
     supabase("driver_locations?select=*"),
@@ -301,9 +300,10 @@ function mapDriver(driver) {
   return {
     id: driver.id,
     name: driver.display_name,
+    identityNo: driver.identity_no || "",
     phone: driver.phone || "",
     vehicleNo: driver.vehicle_no,
-    routeLabel: driver.route_label || "",
+    routeLabel: "",
     pin: driver.quick_login_code_hash || "",
     active: driver.active,
   };
@@ -392,6 +392,8 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "create_case") {
+    const duplicate = await findDuplicateCase(payload.case);
+    if (duplicate) throw new Error(duplicate);
     const person = await supabase("cases", {
       method: "POST",
       headers: { Prefer: "return=representation" },
@@ -417,6 +419,8 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "update_case") {
+    const duplicate = await findDuplicateCase(payload.case, payload.case.id);
+    if (duplicate) throw new Error(duplicate);
     await supabase(`cases?id=eq.${encodeURIComponent(payload.case.id)}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
@@ -444,6 +448,8 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "create_driver") {
+    const duplicate = await findDuplicateDriver(payload.driver);
+    if (duplicate) throw new Error(duplicate);
     await supabase("drivers", {
       method: "POST",
       headers: { Prefer: "return=representation" },
@@ -452,6 +458,8 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "update_driver") {
+    const duplicate = await findDuplicateDriver(payload.driver, payload.driver.id);
+    if (duplicate) throw new Error(duplicate);
     await supabase(`drivers?id=eq.${encodeURIComponent(payload.driver.id)}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
@@ -513,6 +521,36 @@ async function handleAction(action, payload = {}) {
   return readState();
 }
 
+async function findDuplicateCase(person, editingId = "") {
+  const filters = [`case_no=eq.${encodeURIComponent(person.caseNo)}`];
+  if (person.identityNo) filters.push(`identity_no=eq.${encodeURIComponent(person.identityNo)}`);
+  if (person.name && person.phone) {
+    filters.push(`and(full_name.eq.${encodeURIComponent(person.name)},phone.eq.${encodeURIComponent(person.phone)})`);
+  }
+
+  const rows = await supabase(`cases?select=id,case_no,full_name,identity_no,phone&or=(${filters.join(",")})`);
+  const duplicate = rows.find((row) => row.id !== editingId);
+  if (!duplicate) return "";
+  if (duplicate.case_no === person.caseNo) return `個案編號 ${person.caseNo} 已存在，請勿重複新增。`;
+  if (person.identityNo && duplicate.identity_no === person.identityNo) return `身分證字號 ${person.identityNo} 已存在於 ${duplicate.full_name}。`;
+  return `${person.name} 與電話 ${person.phone} 已存在，請確認是否為同一位個案。`;
+}
+
+async function findDuplicateDriver(driver, editingId = "") {
+  const filters = [`vehicle_no=eq.${encodeURIComponent(driver.vehicleNo)}`];
+  if (driver.identityNo) filters.push(`identity_no=eq.${encodeURIComponent(driver.identityNo)}`);
+  if (driver.name && driver.phone) {
+    filters.push(`and(display_name.eq.${encodeURIComponent(driver.name)},phone.eq.${encodeURIComponent(driver.phone)})`);
+  }
+
+  const rows = await supabase(`drivers?select=id,display_name,identity_no,phone,vehicle_no&or=(${filters.join(",")})`);
+  const duplicate = rows.find((row) => row.id !== editingId);
+  if (!duplicate) return "";
+  if (driver.identityNo && duplicate.identity_no === driver.identityNo) return `司機身分證字號 ${driver.identityNo} 已存在於 ${duplicate.display_name}。`;
+  if (duplicate.vehicle_no === driver.vehicleNo) return `車號 ${driver.vehicleNo} 已由 ${duplicate.display_name} 使用。`;
+  return `${driver.name} 與電話 ${driver.phone} 已存在，請確認是否重複新增。`;
+}
+
 function casePayload(person) {
   return {
     case_no: person.caseNo,
@@ -541,9 +579,10 @@ function casePayload(person) {
 function driverPayload(driver) {
   return {
     display_name: driver.name,
+    identity_no: driver.identityNo || null,
     phone: driver.phone,
     vehicle_no: driver.vehicleNo,
-    route_label: driver.routeLabel,
+    route_label: null,
     quick_login_code_hash: driver.pin,
     active: driver.active ?? true,
   };

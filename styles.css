@@ -15,6 +15,7 @@
   --violet: #6f5ca8;
   --shadow: 0 16px 40px rgba(23, 33, 43, 0.08);
   --shadow-soft: 0 8px 22px rgba(23, 33, 43, 0.06);
+  --user-font-scale: 1;
   color-scheme: light;
   font-family:
     "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
@@ -27,11 +28,33 @@
 body {
   margin: 0;
   min-height: 100vh;
+  font-size: calc(16px * var(--user-font-scale));
   background:
     linear-gradient(120deg, rgba(15, 118, 110, 0.08), transparent 32%),
     linear-gradient(240deg, rgba(39, 100, 165, 0.07), transparent 36%),
     var(--bg);
   color: var(--ink);
+}
+
+.settings-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.font-size-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.font-size-panel input[type="range"] {
+  padding: 0;
+}
+
+.font-size-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 button,
@@ -104,6 +127,14 @@ button {
 .section-heading h3 {
   margin: 0;
   line-height: 1.2;
+}
+
+.topbar h2 {
+  font-size: calc(28px * var(--user-font-scale));
+}
+
+.section-heading h3 {
+  font-size: calc(20px * var(--user-font-scale));
 }
 
 .brand h1 {
@@ -253,10 +284,6 @@ button {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 22px;
-}
-
-.topbar h2 {
-  font-size: 28px;
 }
 
 .top-actions {
@@ -851,7 +878,7 @@ textarea {
 .subtext {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--user-font-scale));
   line-height: 1.5;
 }
 
@@ -1199,7 +1226,7 @@ textarea {
 
 .task-actions button {
   min-height: 60px;
-  font-size: 17px;
+  font-size: calc(17px * var(--user-font-scale));
 }
 
 .location-note {

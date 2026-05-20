@@ -1,6 +1,7 @@
 const STORAGE_KEY = "ltc-community-transport-v1";
 const COORDINATOR_SESSION_KEY = "ltc-coordinator-unlocked";
 const COORDINATOR_PASSCODE_KEY = "ltc-coordinator-passcode";
+const FONT_SCALE_KEY = "ltc-font-scale";
 const COORDINATOR_PASSCODE = "2468";
 const protectedViews = new Set(["dashboard", "cases", "drivers", "settings"]);
 const coordinatorActions = new Set([
@@ -39,6 +40,11 @@ const eventLabels = {
 };
 
 const releaseNotes = [
+  {
+    version: "v0.6.1",
+    date: "2026-05-20",
+    items: ["司機資料新增身分證字號並移除路線輸入", "新增司機與個案重複檢查", "司機 PIN 改為 6 碼", "新增每位使用者獨立保存的文字大小設定"],
+  },
   {
     version: "v0.6.0",
     date: "2026-05-20",
@@ -107,6 +113,7 @@ let driverFormOpen = false;
 let coordinatorPasscode = sessionStorage.getItem(COORDINATOR_PASSCODE_KEY) || "";
 let coordinatorUnlocked = sessionStorage.getItem(COORDINATOR_SESSION_KEY) === "true" && Boolean(coordinatorPasscode);
 let pendingProtectedView = "dashboard";
+let fontScale = Number(localStorage.getItem(FONT_SCALE_KEY) || "100");
 let mapView = {
   zoom: 1,
   panX: 0,
@@ -168,6 +175,11 @@ function loadState() {
 
 function normalizeState(value) {
   const fresh = defaultState();
+  const legacyPins = {
+    "1357": "135790",
+    "2468": "246802",
+    "9753": "975310",
+  };
   const hasDrivers = Array.isArray(value.drivers);
   const hasCases = Array.isArray(value.cases);
   const hasTrips = Array.isArray(value.trips);
@@ -187,6 +199,8 @@ function normalizeState(value) {
       ...fallback,
       ...driver,
       homeLocation: driver.homeLocation ?? fallback?.homeLocation ?? fallbackLocation(driver.id),
+      routeLabel: "",
+      pin: legacyPins[driver.pin] ?? driver.pin,
     };
   });
 
@@ -278,30 +292,33 @@ function defaultState() {
     {
       id: "drv_lin",
       name: "林志明",
+      identityNo: "A123456789",
       phone: "0912-118-205",
       vehicleNo: "KAA-1032",
-      routeLabel: "A 線",
-      pin: "1357",
+      routeLabel: "",
+      pin: "135790",
       homeLocation: { lat: 25.0409, lng: 121.5164 },
       active: true,
     },
     {
       id: "drv_wu",
       name: "吳佳玲",
+      identityNo: "B223456789",
       phone: "0928-772-481",
       vehicleNo: "KAB-2210",
-      routeLabel: "B 線",
-      pin: "2468",
+      routeLabel: "",
+      pin: "246802",
       homeLocation: { lat: 25.0311, lng: 121.4978 },
       active: true,
     },
     {
       id: "drv_chen",
       name: "陳建宏",
+      identityNo: "C323456789",
       phone: "0936-458-119",
       vehicleNo: "KAC-5198",
-      routeLabel: "C 線",
-      pin: "9753",
+      routeLabel: "",
+      pin: "975310",
       homeLocation: { lat: 25.064, lng: 121.5423 },
       active: true,
     },
@@ -607,6 +624,7 @@ function filteredTrips() {
 }
 
 function render() {
+  applyFontScale();
   applySidebarState();
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === activeView);
@@ -621,6 +639,11 @@ function render() {
   if (visibleView === "drivers") renderDrivers();
   if (visibleView === "driver") renderDriver();
   if (visibleView === "settings") renderSettings();
+}
+
+function applyFontScale() {
+  const safeScale = Number.isFinite(fontScale) ? Math.min(125, Math.max(90, fontScale)) : 100;
+  document.documentElement.style.setProperty("--user-font-scale", safeScale / 100);
 }
 
 function requestView(view) {
@@ -699,7 +722,7 @@ function renderDashboard() {
   driverFilter.innerHTML = [
     '<option value="all">全部司機</option>',
     ...state.drivers.map((driver) => {
-      return `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.routeLabel)}</option>`;
+      return `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.vehicleNo)}</option>`;
     }),
   ].join("");
   driverFilter.value = filters.driver;
@@ -962,7 +985,7 @@ function renderLocationFeed() {
         <article class="location-item">
           <div>
             <strong>${escapeHTML(driver.name)}</strong>
-            <p class="subtext">${escapeHTML(driver.routeLabel)} · ${escapeHTML(driver.vehicleNo)}</p>
+            <p class="subtext">${escapeHTML(driver.vehicleNo)}</p>
           </div>
           <div>
             <span class="status-pill ${escapeHTML(getDriverLiveStatus(driver.id) === "moving" ? "picked_up" : "scheduled")}">
@@ -1060,7 +1083,7 @@ function renderCases() {
   const driverSelect = document.getElementById("caseDriverSelect");
   driverSelect.innerHTML = state.drivers
     .filter((driver) => driver.active)
-    .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.routeLabel)}</option>`)
+    .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.vehicleNo)}</option>`)
     .join("");
 
   document.getElementById("openCaseFormBtn").addEventListener("click", () => {
@@ -1188,6 +1211,13 @@ async function handleCaseSubmit(event) {
     note: String(form.get("note")).trim(),
     active: existingCase?.active ?? true,
   };
+
+  const duplicate = findDuplicateCase(newCase, editingId);
+  if (duplicate) {
+    dataMessage = duplicate;
+    renderCases();
+    return;
+  }
 
   if (dataMode === "supabase") {
     try {
@@ -1370,6 +1400,49 @@ function renderDrivers() {
   if (editingDriverId) fillDriverForm(editingDriverId);
 }
 
+function sameText(left, right) {
+  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
+}
+
+function findDuplicateCase(person, editingId = "") {
+  const duplicate = state.cases.find((item) => {
+    if (item.id === editingId) return false;
+    return (
+      sameText(item.caseNo, person.caseNo) ||
+      (person.identityNo && sameText(item.identityNo, person.identityNo)) ||
+      (person.phone && sameText(item.name, person.name) && sameText(item.phone, person.phone))
+    );
+  });
+
+  if (!duplicate) return "";
+  if (sameText(duplicate.caseNo, person.caseNo)) return `個案編號 ${person.caseNo} 已存在，請勿重複新增。`;
+  if (person.identityNo && sameText(duplicate.identityNo, person.identityNo)) return `身分證字號 ${person.identityNo} 已存在於 ${duplicate.name}。`;
+  return `${person.name} 與電話 ${person.phone} 已存在，請確認是否為同一位個案。`;
+}
+
+function findDuplicateDriver(driver, editingId = "") {
+  const duplicate = state.drivers.find((item) => {
+    if (item.id === editingId) return false;
+    return (
+      (driver.identityNo && sameText(item.identityNo, driver.identityNo)) ||
+      sameText(item.vehicleNo, driver.vehicleNo) ||
+      (driver.phone && sameText(item.name, driver.name) && sameText(item.phone, driver.phone))
+    );
+  });
+
+  if (!duplicate) return "";
+  if (driver.identityNo && sameText(duplicate.identityNo, driver.identityNo)) return `司機身分證字號 ${driver.identityNo} 已存在於 ${duplicate.name}。`;
+  if (sameText(duplicate.vehicleNo, driver.vehicleNo)) return `車號 ${driver.vehicleNo} 已由 ${duplicate.name} 使用。`;
+  return `${driver.name} 與電話 ${driver.phone} 已存在，請確認是否重複新增。`;
+}
+
+function maskIdentity(value) {
+  const text = String(value || "").trim();
+  if (!text) return "未填";
+  if (text.length <= 4) return text;
+  return `${text.slice(0, 2)}${"*".repeat(Math.max(0, text.length - 4))}${text.slice(-2)}`;
+}
+
 function renderDriverManageCard(driver) {
   const activeText = driver.active ? "服務中" : "已停用";
   const activeClass = driver.active ? "completed" : "scheduled";
@@ -1394,11 +1467,12 @@ function renderDriverManageCard(driver) {
     <article class="case-card ${isSelected ? "selected" : ""}" data-driver-id="${escapeHTML(driver.id)}" tabindex="0">
       <div>
         <strong>${escapeHTML(driver.name)}</strong>
-        <p class="subtext">${escapeHTML(driver.routeLabel)} · ${escapeHTML(driver.vehicleNo)}</p>
+        <p class="subtext">車號 ${escapeHTML(driver.vehicleNo)}</p>
         <p class="subtext">${escapeHTML(driver.phone || "未填電話")}</p>
         <span class="status-pill ${activeClass}">${activeText}</span>
       </div>
       <div>
+        <p class="subtext">身分證字號：${escapeHTML(maskIdentity(driver.identityNo))}</p>
         <p class="subtext">快速登入 PIN：${escapeHTML(driver.pin || "未設定")}</p>
         <p class="subtext">最新定位：${escapeHTML(formatCoordinate(state.driverLocations[driver.id]))}</p>
         <p class="subtext">更新時間：${escapeHTML(formatEventTime(state.driverLocations[driver.id]?.updatedAt))}</p>
@@ -1415,9 +1489,9 @@ function fillDriverForm(driverId) {
 
   form.elements.id.value = driver.id;
   form.elements.name.value = driver.name;
+  form.elements.identityNo.value = driver.identityNo || "";
   form.elements.phone.value = driver.phone || "";
   form.elements.vehicleNo.value = driver.vehicleNo;
-  form.elements.routeLabel.value = driver.routeLabel;
   form.elements.pin.value = driver.pin || "";
   form.elements.active.value = String(Boolean(driver.active));
   document.getElementById("driverFormMode").textContent = "編輯司機";
@@ -1431,12 +1505,26 @@ async function handleDriverSubmit(event) {
   const driver = {
     id: editingId || uid("drv"),
     name: String(form.get("name")).trim(),
+    identityNo: String(form.get("identityNo")).trim(),
     phone: String(form.get("phone")).trim(),
     vehicleNo: String(form.get("vehicleNo")).trim(),
-    routeLabel: String(form.get("routeLabel")).trim(),
+    routeLabel: "",
     pin: String(form.get("pin")).trim(),
     active: String(form.get("active")) === "true",
   };
+
+  const duplicate = findDuplicateDriver(driver, editingId);
+  if (duplicate) {
+    dataMessage = duplicate;
+    renderDrivers();
+    return;
+  }
+
+  if (!/^\d{6}$/.test(driver.pin)) {
+    dataMessage = "司機 PIN 必須是 6 位數字。";
+    renderDrivers();
+    return;
+  }
 
   if (dataMode === "supabase") {
     try {
@@ -1564,7 +1652,7 @@ function renderDriverLogin() {
         <p class="eyebrow">PIN</p>
         <h3>${selectedDriver ? escapeHTML(selectedDriver.name) : "請先選擇司機"}</h3>
       </div>
-      <div class="pin-display" aria-label="PIN 輸入">${pinInput ? "●".repeat(pinInput.length) : "----"}</div>
+      <div class="pin-display" aria-label="PIN 輸入">${pinInput ? "●".repeat(pinInput.length) : "------"}</div>
       <div class="keypad">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => `<button type="button" data-key="${digit}">${digit}</button>`).join("")}
         <button type="button" data-key="clear">清除</button>
@@ -1582,7 +1670,7 @@ function renderDriverLoginCard(driver) {
   const active = driver.id === selectedLoginDriverId ? "active" : "";
   return `
     <button class="driver-card ${active}" type="button" data-driver-id="${escapeHTML(driver.id)}">
-      <span class="driver-badge">${escapeHTML(driver.routeLabel)}</span>
+      <span class="driver-badge">司機</span>
       <strong>${escapeHTML(driver.name)}</strong>
       <span class="subtext">車號 ${escapeHTML(driver.vehicleNo)}</span>
       <span class="subtext">${escapeHTML(driver.phone)}</span>
@@ -1606,9 +1694,9 @@ function handleDriverLoginClick(event) {
   const key = keyButton.dataset.key;
   if (key === "clear") pinInput = "";
   if (key === "back") pinInput = pinInput.slice(0, -1);
-  if (/^\d$/.test(key) && pinInput.length < 4) pinInput += key;
+  if (/^\d$/.test(key) && pinInput.length < 6) pinInput += key;
 
-  if (pinInput.length === 4) {
+  if (pinInput.length === 6) {
     const driver = getDriver(selectedLoginDriverId);
     if (driver?.pin === pinInput) {
       activeDriverId = driver.id;
@@ -1632,7 +1720,7 @@ function renderDriverWorkspace() {
   view.innerHTML = `
     <section class="driver-header">
       <div>
-        <p>${escapeHTML(driver.routeLabel)} · ${escapeHTML(driver.vehicleNo)}</p>
+        <p>${escapeHTML(driver.vehicleNo)}</p>
         <h3>${escapeHTML(driver.name)} 今日接送</h3>
       </div>
       <button class="ghost-btn" type="button" id="driverLogoutBtn">登出</button>
@@ -1823,6 +1911,24 @@ function updateDriverLocation(driverId, tripId, eventType, updatedAt, location) 
 function renderSettings() {
   const host = document.getElementById("appView");
   host.replaceChildren(document.getElementById("settingsTemplate").content.cloneNode(true));
+
+  const range = document.getElementById("fontSizeRange");
+  const label = document.getElementById("fontSizeLabel");
+  range.value = String(fontScale);
+  label.textContent = `${fontScale}%`;
+  range.addEventListener("input", () => {
+    fontScale = Number(range.value);
+    localStorage.setItem(FONT_SCALE_KEY, String(fontScale));
+    label.textContent = `${fontScale}%`;
+    applyFontScale();
+  });
+  document.getElementById("fontSizeResetBtn").addEventListener("click", () => {
+    fontScale = 100;
+    localStorage.setItem(FONT_SCALE_KEY, "100");
+    range.value = "100";
+    label.textContent = "100%";
+    applyFontScale();
+  });
 
   document.getElementById("releaseList").innerHTML = releaseNotes
     .map((release) => {

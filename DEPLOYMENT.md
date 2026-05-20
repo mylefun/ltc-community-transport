@@ -57,11 +57,11 @@ gh repo create ltc-community-transport --source=. --private --push
 執行 schema 後，可先手動新增：
 
 ```sql
-insert into public.drivers(display_name, phone, vehicle_no, route_label)
+insert into public.drivers(display_name, identity_no, phone, vehicle_no, quick_login_code_hash)
 values
-  ('林志明', '0912-118-205', 'KAA-1032', 'A 線'),
-  ('吳佳玲', '0928-772-481', 'KAB-2210', 'B 線'),
-  ('陳建宏', '0936-458-119', 'KAC-5198', 'C 線');
+  ('林志明', 'A123456789', '0912-118-205', 'KAA-1032', '135790'),
+  ('吳佳玲', 'B223456789', '0928-772-481', 'KAB-2210', '246802'),
+  ('陳建宏', 'C323456789', '0936-458-119', 'KAC-5198', '975310');
 ```
 
 個案與每日班表可從 `cases`、`daily_rides` 表新增。

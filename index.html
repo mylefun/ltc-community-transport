@@ -301,16 +301,16 @@
               <input required name="phone" inputmode="tel" />
             </label>
             <label>
+              身分證字號
+              <input required name="identityNo" autocomplete="off" />
+            </label>
+            <label>
               車號
               <input required name="vehicleNo" placeholder="KAA-1032" />
             </label>
             <label>
-              路線
-              <input required name="routeLabel" placeholder="A 線" />
-            </label>
-            <label>
-              快速登入 PIN
-              <input required name="pin" inputmode="numeric" maxlength="8" />
+              快速登入 PIN（6 碼）
+              <input required name="pin" inputmode="numeric" minlength="6" maxlength="6" pattern="[0-9]{6}" placeholder="請輸入 6 位數字" />
             </label>
             <label>
               狀態
@@ -353,15 +353,37 @@
     </template>
 
     <template id="settingsTemplate">
-      <section class="work-section">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">系統版本</p>
-            <h3><span class="section-icon" aria-hidden="true">✨</span>版本更新紀錄</h3>
+      <div class="settings-layout">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">個人偏好</p>
+              <h3><span class="section-icon" aria-hidden="true">🔎</span>文字大小</h3>
+            </div>
           </div>
-        </div>
-        <div class="release-list" id="releaseList"></div>
-      </section>
+          <div class="font-size-panel">
+            <label>
+              介面文字大小
+              <input id="fontSizeRange" type="range" min="90" max="125" step="5" />
+            </label>
+            <div class="font-size-actions">
+              <span class="count-pill" id="fontSizeLabel"></span>
+              <button class="ghost-btn" id="fontSizeResetBtn" type="button">恢復預設</button>
+            </div>
+            <p class="subtext">此設定只保存在目前這台裝置與瀏覽器，不會影響其他使用者。</p>
+          </div>
+        </section>
+
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">系統版本</p>
+              <h3><span class="section-icon" aria-hidden="true">✨</span>版本更新紀錄</h3>
+            </div>
+          </div>
+          <div class="release-list" id="releaseList"></div>
+        </section>
+      </div>
     </template>
 
     <script src="./app.js" defer></script>

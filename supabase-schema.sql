@@ -22,6 +22,7 @@ create table if not exists public.drivers (
   id uuid primary key default gen_random_uuid(),
   auth_user_id uuid unique references auth.users(id) on delete set null,
   display_name text not null,
+  identity_no text unique,
   phone text,
   vehicle_no text not null,
   route_label text,
@@ -30,6 +31,13 @@ create table if not exists public.drivers (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.drivers
+  add column if not exists identity_no text;
+
+create unique index if not exists idx_drivers_identity_no
+  on public.drivers(identity_no)
+  where identity_no is not null;
 
 create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
@@ -79,6 +87,10 @@ alter table public.cases
   add column if not exists care_manager text,
   add column if not exists care_manager_phone text,
   add column if not exists ride_note text;
+
+create unique index if not exists idx_cases_identity_no
+  on public.cases(identity_no)
+  where identity_no is not null;
 
 create table if not exists public.daily_rides (
   id uuid primary key default gen_random_uuid(),
