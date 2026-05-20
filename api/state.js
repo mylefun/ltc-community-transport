@@ -258,7 +258,9 @@ function ridePayload(serviceDate, person, driver, pickup, dropoff, purpose, over
 }
 
 async function readState() {
-  await seedIfEmpty();
+  if (process.env.DEMO_SEED_ENABLED === "true") {
+    await seedIfEmpty();
+  }
 
   const serviceDate = todayKey();
   const [drivers, cases, trips, locations] = await Promise.all([
@@ -437,23 +439,18 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "delete_driver") {
-    const rides = await supabase(`daily_rides?select=id&driver_id=eq.${encodeURIComponent(payload.driverId)}&limit=1`);
-    if (rides.length) {
-      await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ active: false }),
-      });
-    } else {
-      await supabase(`driver_locations?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
-        method: "DELETE",
-        headers: { Prefer: "return=minimal" },
-      });
-      await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
-        method: "DELETE",
-        headers: { Prefer: "return=minimal" },
-      });
-    }
+    await supabase(`daily_rides?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+    await supabase(`driver_locations?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+    await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
   }
 
   if (action === "create_trip") {

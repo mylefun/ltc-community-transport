@@ -23,6 +23,11 @@ const eventLabels = {
 
 const releaseNotes = [
   {
+    version: "v0.5.1",
+    date: "2026-05-20",
+    items: ["修正刪除個案與司機後重新整理又出現示範資料的問題", "正式模式不再自動補回示範資料"],
+  },
+  {
     version: "v0.5.0",
     date: "2026-05-20",
     items: ["側邊選單支援收合", "新增個案與司機完整管理", "接送地圖顯示個案路徑", "Supabase 寫入流程補齊 CRUD"],
@@ -129,12 +134,15 @@ function loadState() {
 
 function normalizeState(value) {
   const fresh = defaultState();
+  const hasDrivers = Array.isArray(value.drivers);
+  const hasCases = Array.isArray(value.cases);
+  const hasTrips = Array.isArray(value.trips);
   const next = {
     ...fresh,
     ...value,
-    drivers: value.drivers?.length ? value.drivers : fresh.drivers,
-    cases: value.cases?.length ? value.cases : fresh.cases,
-    trips: value.trips?.length ? value.trips : fresh.trips,
+    drivers: hasDrivers ? value.drivers : fresh.drivers,
+    cases: hasCases ? value.cases : fresh.cases,
+    trips: hasTrips ? value.trips : fresh.trips,
     events: Array.isArray(value.events) ? value.events : [],
     driverLocations: value.driverLocations && typeof value.driverLocations === "object" ? value.driverLocations : {},
   };
@@ -166,8 +174,8 @@ function rollToToday(previous) {
   const fresh = defaultState();
   return {
     ...fresh,
-    drivers: previous.drivers?.length ? previous.drivers : fresh.drivers,
-    cases: previous.cases?.length ? previous.cases : fresh.cases,
+    drivers: Array.isArray(previous.drivers) ? previous.drivers : fresh.drivers,
+    cases: Array.isArray(previous.cases) ? previous.cases : fresh.cases,
     driverLocations: previous.driverLocations ?? fresh.driverLocations,
   };
 }
