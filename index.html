@@ -124,19 +124,22 @@
     </template>
 
     <template id="casesTemplate">
-      <div class="split-layout">
+      <div class="case-workspace" id="caseWorkspace">
         <section class="work-section">
           <div class="section-heading">
             <div>
               <p class="eyebrow">管理個案資料</p>
               <h3>個案名冊</h3>
             </div>
-            <span class="count-pill" id="caseCount"></span>
+            <div class="heading-actions">
+              <span class="count-pill" id="caseCount"></span>
+              <button class="icon-add-btn" id="openCaseFormBtn" type="button" aria-label="新增個案">+</button>
+            </div>
           </div>
           <div class="case-list" id="caseList"></div>
         </section>
 
-        <section class="work-section compact-section">
+        <section class="work-section compact-section case-form-panel" id="caseFormPanel" hidden>
           <div class="section-heading">
             <div>
               <p class="eyebrow" id="caseFormMode">新增個案</p>

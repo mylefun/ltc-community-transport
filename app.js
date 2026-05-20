@@ -23,6 +23,11 @@ const eventLabels = {
 
 const releaseNotes = [
   {
+    version: "v0.5.2",
+    date: "2026-05-20",
+    items: ["個案頁新增按鈕開啟新增表單", "個案卡片改為點選後才顯示操作選項", "左側服務日期固定單行顯示"],
+  },
+  {
     version: "v0.5.1",
     date: "2026-05-20",
     items: ["修正刪除個案與司機後重新整理又出現示範資料的問題", "正式模式不再自動補回示範資料"],
@@ -72,6 +77,8 @@ let filters = {
 };
 let sidebarCollapsed = localStorage.getItem("ltc-sidebar-collapsed") === "true";
 let editingCaseId = "";
+let selectedCaseId = "";
+let caseFormOpen = false;
 let editingDriverId = "";
 let mapView = {
   zoom: 1,
@@ -924,6 +931,16 @@ function renderCases() {
   const host = document.getElementById("appView");
   host.replaceChildren(document.getElementById("casesTemplate").content.cloneNode(true));
 
+  if (selectedCaseId && !state.cases.some((person) => person.id === selectedCaseId)) {
+    selectedCaseId = "";
+  }
+
+  const formPanel = document.getElementById("caseFormPanel");
+  const workspace = document.getElementById("caseWorkspace");
+  const isFormOpen = caseFormOpen || Boolean(editingCaseId);
+  formPanel.hidden = !isFormOpen;
+  workspace.classList.toggle("form-open", isFormOpen);
+
   document.getElementById("caseCount").textContent = `${state.cases.length} 位個案`;
   document.getElementById("caseList").innerHTML = state.cases.map(renderCaseCard).join("");
 
@@ -933,9 +950,16 @@ function renderCases() {
     .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.routeLabel)}</option>`)
     .join("");
 
+  document.getElementById("openCaseFormBtn").addEventListener("click", () => {
+    editingCaseId = "";
+    selectedCaseId = "";
+    caseFormOpen = true;
+    renderCases();
+  });
   document.getElementById("caseForm").addEventListener("submit", handleCaseSubmit);
   document.getElementById("caseCancelBtn").addEventListener("click", () => {
     editingCaseId = "";
+    caseFormOpen = false;
     renderCases();
   });
   document.getElementById("caseList").addEventListener("click", handleCaseAction);
@@ -946,22 +970,10 @@ function renderCaseCard(person) {
   const activeText = person.active ? "服務中" : "已停用";
   const activeClass = person.active ? "completed" : "scheduled";
   const hasTodayTrip = state.trips.some((trip) => trip.caseId === person.id && trip.serviceDate === state.serviceDate);
-
-  return `
-    <article class="case-card">
-      <div>
-        <strong>${escapeHTML(person.name)}</strong>
-        <p class="subtext">${escapeHTML(person.caseNo)} · ${escapeHTML(person.careLevel)}</p>
-        <p class="subtext">${escapeHTML(person.phone)}</p>
-        <span class="status-pill ${activeClass}">${activeText}</span>
-      </div>
-      <div>
-        <p class="subtext">上車：${escapeHTML(person.pickupAddress)}</p>
-        <p class="subtext">目的地：${escapeHTML(person.destinationAddress)}</p>
-        <p class="subtext">行動：${escapeHTML(person.mobility)}</p>
-        <p class="subtext">備註：${escapeHTML(person.note || "無")}</p>
-      </div>
-      <div class="task-actions">
+  const isSelected = selectedCaseId === person.id;
+  const actions = isSelected
+    ? `
+      <div class="task-actions case-actions-panel" aria-label="${escapeHTML(person.name)} 操作選項">
         <button class="primary-btn" type="button" data-action="edit" data-case-id="${escapeHTML(person.id)}">
           編輯
         </button>
@@ -975,6 +987,28 @@ function renderCaseCard(person) {
           刪除
         </button>
       </div>
+    `
+    : `
+      <div class="case-card-hint">
+        點選個案顯示操作
+      </div>
+    `;
+
+  return `
+    <article class="case-card ${isSelected ? "selected" : ""}" data-case-id="${escapeHTML(person.id)}" tabindex="0">
+      <div>
+        <strong>${escapeHTML(person.name)}</strong>
+        <p class="subtext">${escapeHTML(person.caseNo)} · ${escapeHTML(person.careLevel)}</p>
+        <p class="subtext">${escapeHTML(person.phone)}</p>
+        <span class="status-pill ${activeClass}">${activeText}</span>
+      </div>
+      <div>
+        <p class="subtext">上車：${escapeHTML(person.pickupAddress)}</p>
+        <p class="subtext">目的地：${escapeHTML(person.destinationAddress)}</p>
+        <p class="subtext">行動：${escapeHTML(person.mobility)}</p>
+        <p class="subtext">備註：${escapeHTML(person.note || "無")}</p>
+      </div>
+      ${actions}
     </article>
   `;
 }
@@ -1034,6 +1068,8 @@ async function handleCaseSubmit(event) {
           : null,
       });
       editingCaseId = "";
+      selectedCaseId = newCase.id;
+      caseFormOpen = false;
       renderCases();
     } catch (error) {
       dataMessage = `新增失敗：${error.message}`;
@@ -1045,6 +1081,8 @@ async function handleCaseSubmit(event) {
   if (editingId) {
     state.cases = state.cases.map((person) => (person.id === editingId ? newCase : person));
     editingCaseId = "";
+    selectedCaseId = newCase.id;
+    caseFormOpen = false;
     saveState();
     renderCases();
     return;
@@ -1072,18 +1110,30 @@ async function handleCaseSubmit(event) {
   }
 
   saveState();
+  selectedCaseId = newCase.id;
+  caseFormOpen = false;
   renderCases();
 }
 
 async function handleCaseAction(event) {
   const button = event.target.closest("button[data-action]");
-  if (!button) return;
+  if (!button) {
+    const card = event.target.closest(".case-card[data-case-id]");
+    if (!card) return;
+    selectedCaseId = card.dataset.caseId === selectedCaseId ? "" : card.dataset.caseId;
+    editingCaseId = "";
+    caseFormOpen = false;
+    renderCases();
+    return;
+  }
 
   const person = state.cases.find((item) => item.id === button.dataset.caseId);
   if (!person) return;
+  selectedCaseId = person.id;
 
   if (button.dataset.action === "edit") {
     editingCaseId = person.id;
+    caseFormOpen = true;
     renderCases();
     return;
   }
@@ -1107,8 +1157,10 @@ async function handleCaseAction(event) {
 
       if (button.dataset.action === "delete") {
         await apiAction("delete_case", { caseId: person.id });
+        selectedCaseId = "";
       }
       editingCaseId = "";
+      caseFormOpen = false;
       renderCases();
     } catch (error) {
       dataMessage = `更新失敗：${error.message}`;
@@ -1144,6 +1196,8 @@ async function handleCaseAction(event) {
     state.trips = state.trips.filter((trip) => trip.caseId !== person.id);
     state.cases = state.cases.filter((item) => item.id !== person.id);
     editingCaseId = "";
+    selectedCaseId = "";
+    caseFormOpen = false;
   }
 
   saveState();

@@ -207,7 +207,8 @@ button {
 
 .today-panel strong {
   display: block;
-  font-size: 18px;
+  font-size: 16px;
+  white-space: nowrap;
 }
 
 .connection-state {
@@ -730,6 +731,32 @@ button {
   margin-bottom: 16px;
 }
 
+.heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-add-btn {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: white;
+  background: linear-gradient(135deg, #1f7f76, #159287);
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(31, 127, 118, 0.22);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.icon-add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(31, 127, 118, 0.28);
+}
+
 .filter-row,
 .inline-fields {
   display: flex;
@@ -859,6 +886,20 @@ textarea {
   gap: 18px;
 }
 
+.case-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+.case-workspace.form-open {
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+}
+
+.case-form-panel[hidden] {
+  display: none;
+}
+
 .case-card {
   display: grid;
   grid-template-columns: minmax(180px, 0.9fr) minmax(260px, 1.2fr) minmax(150px, 0.7fr);
@@ -868,6 +909,36 @@ textarea {
   background: #fbfcfb;
   border: 1px solid var(--line);
   border-radius: 8px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.case-card:hover,
+.case-card.selected {
+  border-color: rgba(31, 127, 118, 0.42);
+  box-shadow: 0 12px 28px rgba(23, 33, 43, 0.08);
+  transform: translateY(-1px);
+}
+
+.case-card:focus-visible {
+  outline: 3px solid rgba(31, 127, 118, 0.28);
+  outline-offset: 3px;
+}
+
+.case-card-hint {
+  display: grid;
+  min-height: 54px;
+  place-items: center;
+  padding: 10px 12px;
+  color: #31505c;
+  background: #eef7fa;
+  border: 1px dashed #b8d4df;
+  border-radius: 8px;
+  font-weight: 800;
+  text-align: center;
 }
 
 .case-form {
@@ -1197,6 +1268,7 @@ textarea {
 
   .summary-grid,
   .split-layout,
+  .case-workspace.form-open,
   .dashboard-grid,
   .driver-login-grid,
   .address-grid {
