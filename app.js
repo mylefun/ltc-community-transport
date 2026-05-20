@@ -36,6 +36,12 @@ let filters = {
   driver: "all",
   status: "all",
 };
+let mapView = {
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+};
+let mapDrag = null;
 let dataMode = "local";
 let dataMessage = "本機示範資料";
 
@@ -518,6 +524,7 @@ function renderDashboard() {
   document.getElementById("mapDriverCount").textContent = `${state.drivers.length} 位司機`;
   document.getElementById("liveMap").innerHTML = renderDriverMap();
   document.getElementById("locationFeed").innerHTML = renderLocationFeed();
+  setupMapControls();
 
   const driverFilter = document.getElementById("driverFilter");
   driverFilter.innerHTML = [
@@ -591,16 +598,109 @@ function renderDriverMap() {
   });
 
   return `
-    <div class="map-grid-lines" aria-hidden="true"></div>
-    <div class="map-road horizontal road-a" aria-hidden="true"></div>
-    <div class="map-road horizontal road-b" aria-hidden="true"></div>
-    <div class="map-road vertical road-c" aria-hidden="true"></div>
-    <div class="map-road vertical road-d" aria-hidden="true"></div>
-    <span class="map-district district-north">士林 / 中山</span>
-    <span class="map-district district-west">萬華 / 中正</span>
-    <span class="map-district district-east">大安 / 信義</span>
-    ${driverMarkers.join("")}
+    <div class="map-controls" aria-label="地圖縮放控制">
+      <button class="map-control-btn" type="button" data-map-action="zoom-out" aria-label="縮小地圖">−</button>
+      <output class="map-zoom-label" aria-label="目前縮放倍率">${Math.round(mapView.zoom * 100)}%</output>
+      <button class="map-control-btn" type="button" data-map-action="zoom-in" aria-label="放大地圖">+</button>
+      <button class="map-reset-btn" type="button" data-map-action="reset">重設</button>
+    </div>
+    <div class="map-help">拖曳平移 · 滾輪縮放 · 縮小可看全體司機</div>
+    <div
+      class="map-canvas"
+      style="transform: translate(${mapView.panX}px, ${mapView.panY}px) scale(${mapView.zoom})"
+    >
+      <div class="map-grid-lines" aria-hidden="true"></div>
+      <div class="map-road horizontal road-a" aria-hidden="true"></div>
+      <div class="map-road horizontal road-b" aria-hidden="true"></div>
+      <div class="map-road vertical road-c" aria-hidden="true"></div>
+      <div class="map-road vertical road-d" aria-hidden="true"></div>
+      <span class="map-district district-north">士林 / 中山</span>
+      <span class="map-district district-west">萬華 / 中正</span>
+      <span class="map-district district-east">大安 / 信義</span>
+      ${driverMarkers.join("")}
+    </div>
   `;
+}
+
+function setupMapControls() {
+  const map = document.getElementById("liveMap");
+  if (!map) return;
+
+  map.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-map-action]")?.dataset.mapAction;
+    if (!action) return;
+    if (action === "zoom-in") setMapZoom(mapView.zoom + 0.25);
+    if (action === "zoom-out") setMapZoom(mapView.zoom - 0.25);
+    if (action === "reset") {
+      mapView = { zoom: 1, panX: 0, panY: 0 };
+      renderDashboard();
+    }
+  });
+
+  map.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      setMapZoom(mapView.zoom + (event.deltaY < 0 ? 0.12 : -0.12));
+    },
+    { passive: false },
+  );
+
+  map.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("button")) return;
+    mapDrag = {
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: mapView.panX,
+      panY: mapView.panY,
+    };
+    map.classList.add("dragging");
+    map.setPointerCapture(event.pointerId);
+  });
+
+  map.addEventListener("pointermove", (event) => {
+    if (!mapDrag) return;
+    mapView.panX = clamp(mapDrag.panX + event.clientX - mapDrag.startX, -260, 260);
+    mapView.panY = clamp(mapDrag.panY + event.clientY - mapDrag.startY, -210, 210);
+    updateMapTransform();
+  });
+
+  map.addEventListener("pointerup", (event) => {
+    mapDrag = null;
+    map.classList.remove("dragging");
+    try {
+      map.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer may already be released by the browser.
+    }
+  });
+
+  map.addEventListener("pointercancel", () => {
+    mapDrag = null;
+    map.classList.remove("dragging");
+  });
+}
+
+function setMapZoom(nextZoom) {
+  mapView.zoom = clamp(Number(nextZoom.toFixed(2)), 0.65, 2.5);
+  mapView.panX = clamp(mapView.panX, -260, 260);
+  mapView.panY = clamp(mapView.panY, -210, 210);
+  updateMapTransform();
+}
+
+function updateMapTransform() {
+  const canvas = document.querySelector(".map-canvas");
+  const label = document.querySelector(".map-zoom-label");
+  if (canvas) {
+    canvas.style.transform = `translate(${mapView.panX}px, ${mapView.panY}px) scale(${mapView.zoom})`;
+  }
+  if (label) {
+    label.textContent = `${Math.round(mapView.zoom * 100)}%`;
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function mapPoint(location) {
