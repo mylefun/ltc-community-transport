@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>社區交通車每日接送系統</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主選單">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">交</span>
+          <div>
+            <p class="eyebrow">長照社區交通</p>
+            <h1>每日接送系統</h1>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="dashboard">
+            <span aria-hidden="true">▦</span>
+            承辦人工作台
+          </button>
+          <button class="nav-item" data-view="cases">
+            <span aria-hidden="true">◎</span>
+            個案資料
+          </button>
+          <button class="nav-item" data-view="driver">
+            <span aria-hidden="true">▣</span>
+            司機入口
+          </button>
+          <button class="nav-item" data-view="settings">
+            <span aria-hidden="true">◇</span>
+            系統設定
+          </button>
+        </nav>
+
+        <section class="today-panel" aria-label="今日摘要">
+          <p class="muted-label">服務日期</p>
+          <strong id="todayLabel"></strong>
+          <div class="connection-state">
+            <span class="dot local"></span>
+            <span>本機示範資料</span>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">承辦人視角</p>
+            <h2 id="viewTitle">承辦人工作台</h2>
+          </div>
+          <div class="top-actions">
+            <div class="clock" id="clock">--:--</div>
+            <button class="ghost-btn" id="resetDemoBtn" type="button">重置示範資料</button>
+          </div>
+        </header>
+
+        <section id="appView" class="view-host" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <template id="dashboardTemplate">
+      <section class="ops-hero">
+        <div>
+          <p class="eyebrow">今日調度總覽</p>
+          <h3>司機位置、接送進度與異常班次集中掌握</h3>
+        </div>
+        <div class="hero-metrics">
+          <span>即時狀態</span>
+          <strong id="heroStatusText">載入中</strong>
+        </div>
+      </section>
+
+      <div class="summary-grid" id="summaryGrid"></div>
+
+      <section class="dashboard-grid">
+        <div class="work-section map-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">司機即時位置</p>
+              <h3>接送定位地圖</h3>
+            </div>
+            <span class="count-pill" id="mapDriverCount"></span>
+          </div>
+          <div class="live-map" id="liveMap" aria-label="司機定位地圖"></div>
+        </div>
+
+        <aside class="work-section compact-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">定位紀錄</p>
+              <h3>最新動態</h3>
+            </div>
+          </div>
+          <div class="location-feed" id="locationFeed"></div>
+        </aside>
+      </section>
+
+      <section class="work-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">即時接送狀態</p>
+            <h3>今日班表</h3>
+          </div>
+          <div class="filter-row">
+            <label>
+              司機
+              <select id="driverFilter"></select>
+            </label>
+            <label>
+              狀態
+              <select id="statusFilter">
+                <option value="all">全部</option>
+                <option value="scheduled">待接</option>
+                <option value="picked_up">接送中</option>
+                <option value="completed">已完成</option>
+                <option value="late">可能延遲</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="route-board" id="routeBoard"></div>
+      </section>
+    </template>
+
+    <template id="casesTemplate">
+      <div class="split-layout">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">管理個案資料</p>
+              <h3>個案名冊</h3>
+            </div>
+            <span class="count-pill" id="caseCount"></span>
+          </div>
+          <div class="case-list" id="caseList"></div>
+        </section>
+
+        <section class="work-section compact-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">新增個案</p>
+              <h3>基本資料</h3>
+            </div>
+          </div>
+          <form class="case-form" id="caseForm">
+            <label>
+              個案姓名
+              <input required name="name" autocomplete="name" />
+            </label>
+            <label>
+              個案編號
+              <input required name="caseNo" placeholder="LTC-006" />
+            </label>
+            <label>
+              聯絡電話
+              <input required name="phone" inputmode="tel" />
+            </label>
+            <label>
+              照顧等級
+              <select name="careLevel">
+                <option>長照2.0 2級</option>
+                <option>長照2.0 3級</option>
+                <option selected>長照2.0 4級</option>
+                <option>長照2.0 5級</option>
+                <option>長照2.0 6級以上</option>
+              </select>
+            </label>
+            <label>
+              行動狀態
+              <select name="mobility">
+                <option>可自行上下車</option>
+                <option>需攙扶</option>
+                <option>輪椅</option>
+                <option>臥床移位</option>
+              </select>
+            </label>
+            <label class="full">
+              上車地址
+              <input required name="pickupAddress" />
+            </label>
+            <label class="full">
+              目的地
+              <input required name="destinationAddress" />
+            </label>
+            <label class="full">
+              備註
+              <textarea name="note" rows="3"></textarea>
+            </label>
+            <div class="inline-fields full">
+              <label>
+                今日上車
+                <input name="scheduledPickup" type="time" value="09:00" />
+              </label>
+              <label>
+                今日送達
+                <input name="scheduledDropoff" type="time" value="09:30" />
+              </label>
+              <label>
+                指派司機
+                <select name="driverId" id="caseDriverSelect"></select>
+              </label>
+            </div>
+            <label class="check-row full">
+              <input name="createTrip" type="checkbox" checked />
+              <span>同步加入今日接送班表</span>
+            </label>
+            <button class="primary-btn full" type="submit">新增個案</button>
+          </form>
+        </section>
+      </div>
+    </template>
+
+    <template id="driverTemplate">
+      <section class="driver-view" id="driverView"></section>
+    </template>
+
+    <template id="settingsTemplate">
+      <div class="split-layout settings-layout">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">後端資料庫</p>
+              <h3>Supabase 結構</h3>
+            </div>
+          </div>
+          <div class="schema-block">
+            <p>正式環境使用 Supabase Auth、Row Level Security、RPC 打卡函式與事件紀錄表。</p>
+            <ul>
+              <li><strong>cases</strong>：個案基本資料、地址、照顧等級、行動狀態。</li>
+              <li><strong>drivers</strong>：司機、車號、路線、對應登入帳號。</li>
+              <li><strong>daily_rides</strong>：每日接送班表、預定時間、實際接到與送達時間。</li>
+              <li><strong>ride_events</strong>：每次接到、送達、取消、備註的事件軌跡與定位。</li>
+              <li><strong>driver_locations</strong>：每位司機最新位置，提供承辦人地圖查詢。</li>
+            </ul>
+          </div>
+          <a class="file-link" href="./supabase-schema.sql">查看 Supabase SQL</a>
+        </section>
+
+        <section class="work-section compact-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">司機快速登入</p>
+              <h3>示範 PIN</h3>
+            </div>
+          </div>
+          <div class="driver-pin-list" id="driverPinList"></div>
+        </section>
+      </div>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
