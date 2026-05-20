@@ -1,4 +1,20 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
+const coordinatorActions = new Set([
+  "assign_driver",
+  "create_case",
+  "update_case",
+  "toggle_case",
+  "delete_case",
+  "create_driver",
+  "update_driver",
+  "toggle_driver",
+  "delete_driver",
+  "create_trip",
+]);
+
+function coordinatorPasscode() {
+  return process.env.COORDINATOR_PIN || "2468";
+}
 
 function rootUrl() {
   const raw = process.env.SUPABASE_URL || "";
@@ -298,13 +314,22 @@ function mapCase(person) {
     id: person.id,
     caseNo: person.case_no,
     name: person.full_name,
+    identityNo: person.identity_no || "",
+    gender: person.gender || "",
+    birthDate: person.birth_date || "",
     phone: person.phone || "",
     emergencyContact: person.emergency_contact || "",
+    emergencyRelation: person.emergency_relation || "",
     emergencyPhone: person.emergency_phone || "",
     careLevel: person.care_level || "",
     mobility: person.mobility_type || "",
+    assistiveDevice: person.assistive_device || "",
+    serviceArea: person.service_area || "",
+    careManager: person.care_manager || "",
+    careManagerPhone: person.care_manager_phone || "",
     pickupAddress: person.pickup_address,
     destinationAddress: person.default_destination,
+    rideNote: person.ride_note || "",
     note: person.notes || "",
     active: person.active,
   };
@@ -354,6 +379,10 @@ function locationObject(lat, lng, source, accuracy = 0) {
 }
 
 async function handleAction(action, payload = {}) {
+  if (coordinatorActions.has(action) && payload.coordinatorPasscode !== coordinatorPasscode()) {
+    throw new Error("Coordinator passcode required");
+  }
+
   if (action === "assign_driver") {
     await supabase(`daily_rides?id=eq.${encodeURIComponent(payload.tripId)}`, {
       method: "PATCH",
@@ -488,13 +517,22 @@ function casePayload(person) {
   return {
     case_no: person.caseNo,
     full_name: person.name,
+    identity_no: person.identityNo || null,
+    gender: person.gender || null,
+    birth_date: person.birthDate || null,
     phone: person.phone,
     emergency_contact: person.emergencyContact || null,
+    emergency_relation: person.emergencyRelation || null,
     emergency_phone: person.emergencyPhone || null,
     care_level: person.careLevel,
     mobility_type: person.mobility,
+    assistive_device: person.assistiveDevice || null,
+    service_area: person.serviceArea || null,
+    care_manager: person.careManager || null,
+    care_manager_phone: person.careManagerPhone || null,
     pickup_address: person.pickupAddress,
     default_destination: person.destinationAddress,
+    ride_note: person.rideNote || null,
     notes: person.note || null,
     active: person.active ?? true,
   };

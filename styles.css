@@ -156,6 +156,17 @@ button {
   text-align: left;
 }
 
+.nav-item span {
+  display: grid;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 17px;
+}
+
 .nav-item b {
   font-weight: 800;
 }
@@ -731,6 +742,19 @@ button {
   margin-bottom: 16px;
 }
 
+.section-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-right: 8px;
+  background: #eef7fa;
+  border: 1px solid #cce2ea;
+  border-radius: 8px;
+  font-size: 20px;
+  vertical-align: middle;
+}
+
 .heading-actions {
   display: flex;
   align-items: center;
@@ -906,7 +930,9 @@ textarea {
   gap: 14px;
   align-items: start;
   padding: 14px;
-  background: #fbfcfb;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(249, 252, 251, 0.96)),
+    radial-gradient(circle at top right, rgba(243, 201, 105, 0.2), transparent 32%);
   border: 1px solid var(--line);
   border-radius: 8px;
   cursor: pointer;
@@ -919,7 +945,7 @@ textarea {
 .case-card:hover,
 .case-card.selected {
   border-color: rgba(31, 127, 118, 0.42);
-  box-shadow: 0 12px 28px rgba(23, 33, 43, 0.08);
+  box-shadow: 0 14px 30px rgba(23, 33, 43, 0.1);
   transform: translateY(-1px);
 }
 
@@ -939,6 +965,54 @@ textarea {
   border-radius: 8px;
   font-weight: 800;
   text-align: center;
+}
+
+.gate-panel {
+  display: grid;
+  min-height: min(620px, calc(100vh - 180px));
+  place-items: center;
+}
+
+.gate-card {
+  width: min(100%, 460px);
+  padding: 34px;
+  background:
+    linear-gradient(160deg, #ffffff 0%, #f7fbfa 58%, #fff8e8 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.gate-icon {
+  display: inline-grid;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 14px;
+  place-items: center;
+  background: #173f45;
+  border-radius: 8px;
+  font-size: 34px;
+}
+
+.gate-card h3 {
+  margin: 0 0 10px;
+  font-size: 28px;
+}
+
+.gate-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  text-align: left;
+}
+
+.form-message {
+  min-height: 20px;
+  margin: 0;
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .case-form {

@@ -37,6 +37,7 @@
 3. 在 Vercel 設定 serverless API 所需環境變數：
    - `SUPABASE_URL`
    - `SUPABASE_SECRET_KEY`
+   - `COORDINATOR_PIN`，預設承辦人密碼為 `2468`
 4. 重新部署 Vercel。
 
 ## 資料設計重點

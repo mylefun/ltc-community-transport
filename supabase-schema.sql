@@ -47,18 +47,38 @@ create table if not exists public.cases (
   id uuid primary key default gen_random_uuid(),
   case_no text not null unique,
   full_name text not null,
+  identity_no text,
+  gender text,
+  birth_date date,
   phone text,
   emergency_contact text,
+  emergency_relation text,
   emergency_phone text,
   care_level text,
   mobility_type text,
+  assistive_device text,
+  service_area text,
+  care_manager text,
+  care_manager_phone text,
   pickup_address text not null,
   default_destination text not null,
+  ride_note text,
   notes text,
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.cases
+  add column if not exists identity_no text,
+  add column if not exists gender text,
+  add column if not exists birth_date date,
+  add column if not exists emergency_relation text,
+  add column if not exists assistive_device text,
+  add column if not exists service_area text,
+  add column if not exists care_manager text,
+  add column if not exists care_manager_phone text,
+  add column if not exists ride_note text;
 
 create table if not exists public.daily_rides (
   id uuid primary key default gen_random_uuid(),
@@ -255,14 +275,7 @@ create policy "cases_read_for_staff"
 on public.cases
 for select
 to authenticated
-using (
-  public.is_coordinator()
-  or id in (
-    select daily_rides.case_id
-    from public.daily_rides
-    where daily_rides.driver_id = public.current_driver_id()
-  )
-);
+using (public.is_coordinator());
 
 drop policy if exists "cases_manage_by_coordinator" on public.cases;
 create policy "cases_manage_by_coordinator"

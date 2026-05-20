@@ -1,11 +1,28 @@
 const STORAGE_KEY = "ltc-community-transport-v1";
+const COORDINATOR_SESSION_KEY = "ltc-coordinator-unlocked";
+const COORDINATOR_PASSCODE_KEY = "ltc-coordinator-passcode";
+const COORDINATOR_PASSCODE = "2468";
+const protectedViews = new Set(["dashboard", "cases", "drivers", "settings"]);
+const coordinatorActions = new Set([
+  "assign_driver",
+  "create_case",
+  "update_case",
+  "toggle_case",
+  "delete_case",
+  "create_driver",
+  "update_driver",
+  "toggle_driver",
+  "delete_driver",
+  "create_trip",
+]);
 
 const viewTitles = {
   dashboard: "承辦人工作台",
   cases: "個案資料",
   drivers: "司機管理",
   driver: "司機入口",
-  settings: "系統設定",
+  settings: "版本更新紀錄",
+  coordinatorGate: "承辦人登入",
 };
 
 const statusLabels = {
@@ -22,6 +39,11 @@ const eventLabels = {
 };
 
 const releaseNotes = [
+  {
+    version: "v0.6.0",
+    date: "2026-05-20",
+    items: ["新增承辦人解鎖畫面保護個管資料", "司機管理改為與個案資料一致的點選式操作", "個案資料欄位擴充並同步 Supabase schema"],
+  },
   {
     version: "v0.5.2",
     date: "2026-05-20",
@@ -80,6 +102,11 @@ let editingCaseId = "";
 let selectedCaseId = "";
 let caseFormOpen = false;
 let editingDriverId = "";
+let selectedDriverId = "";
+let driverFormOpen = false;
+let coordinatorPasscode = sessionStorage.getItem(COORDINATOR_PASSCODE_KEY) || "";
+let coordinatorUnlocked = sessionStorage.getItem(COORDINATOR_SESSION_KEY) === "true" && Boolean(coordinatorPasscode);
+let pendingProtectedView = "dashboard";
 let mapView = {
   zoom: 1,
   panX: 0,
@@ -213,6 +240,9 @@ async function loadRemoteState() {
 
 async function apiAction(action, payload = {}) {
   if (dataMode !== "supabase") return false;
+  const guardedPayload = coordinatorActions.has(action)
+    ? { ...payload, coordinatorPasscode }
+    : payload;
 
   const response = await fetch("/api/state", {
     method: "POST",
@@ -220,7 +250,7 @@ async function apiAction(action, payload = {}) {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ action, payload }),
+    body: JSON.stringify({ action, payload: guardedPayload }),
   });
 
   const result = await response.json();
@@ -282,13 +312,22 @@ function defaultState() {
       id: "case_001",
       caseNo: "LTC-001",
       name: "李美玉",
+      identityNo: "A123456789",
+      gender: "女",
+      birthDate: "1943-04-12",
       phone: "02-2345-1101",
       emergencyContact: "李小姐",
+      emergencyRelation: "女兒",
       emergencyPhone: "0910-552-001",
       careLevel: "長照2.0 4級",
       mobility: "輪椅",
+      assistiveDevice: "標準輪椅",
+      serviceArea: "中正區",
+      careManager: "陳個管員",
+      careManagerPhone: "02-2345-9901",
       pickupAddress: "台北市中正區和平西路一段 38 號",
       destinationAddress: "松柏日照中心",
+      rideNote: "上車前請電話通知家屬，需協助輪椅固定。",
       note: "需協助輪椅固定，上車前請電話通知家屬。",
       active: true,
     },
@@ -296,13 +335,22 @@ function defaultState() {
       id: "case_002",
       caseNo: "LTC-002",
       name: "王進財",
+      identityNo: "B102938475",
+      gender: "男",
+      birthDate: "1939-11-20",
       phone: "02-2755-8020",
       emergencyContact: "王太太",
+      emergencyRelation: "配偶",
       emergencyPhone: "0922-810-334",
       careLevel: "長照2.0 3級",
       mobility: "需攙扶",
+      assistiveDevice: "手杖",
+      serviceArea: "大安區",
+      careManager: "林個管員",
+      careManagerPhone: "02-2755-7120",
       pickupAddress: "台北市大安區信義路三段 91 巷 6 號",
       destinationAddress: "仁愛復能診所",
+      rideNote: "聽力較弱，抵達時請慢慢說明。",
       note: "聽力較弱，抵達時請慢慢說明。",
       active: true,
     },
@@ -310,13 +358,22 @@ function defaultState() {
       id: "case_003",
       caseNo: "LTC-003",
       name: "張阿月",
+      identityNo: "C223344556",
+      gender: "女",
+      birthDate: "1941-08-06",
       phone: "02-2368-7712",
       emergencyContact: "張先生",
+      emergencyRelation: "兒子",
       emergencyPhone: "0988-610-741",
       careLevel: "長照2.0 5級",
       mobility: "輪椅",
+      assistiveDevice: "輪椅、陪同者",
+      serviceArea: "萬華區",
+      careManager: "黃個管員",
+      careManagerPhone: "02-2368-6722",
       pickupAddress: "台北市萬華區西園路二段 122 號",
       destinationAddress: "和平醫院復健科",
+      rideNote: "回程可能有藥袋，請提醒個案攜帶健保卡。",
       note: "回程可能有藥袋，請提醒個案攜帶健保卡。",
       active: true,
     },
@@ -324,13 +381,22 @@ function defaultState() {
       id: "case_004",
       caseNo: "LTC-004",
       name: "周秀琴",
+      identityNo: "D998877665",
+      gender: "女",
+      birthDate: "1948-02-15",
       phone: "02-2302-6168",
       emergencyContact: "周小姐",
+      emergencyRelation: "女兒",
       emergencyPhone: "0963-215-618",
       careLevel: "長照2.0 2級",
       mobility: "可自行上下車",
+      assistiveDevice: "無",
+      serviceArea: "中山區",
+      careManager: "吳個管員",
+      careManagerPhone: "02-2302-7116",
       pickupAddress: "台北市中山區龍江路 55 巷 8 號",
       destinationAddress: "長青據點",
+      rideNote: "固定週三參與據點課程。",
       note: "固定週三參與據點課程。",
       active: true,
     },
@@ -338,13 +404,22 @@ function defaultState() {
       id: "case_005",
       caseNo: "LTC-005",
       name: "黃宗義",
+      identityNo: "E112233445",
+      gender: "男",
+      birthDate: "1945-06-30",
       phone: "02-2558-9200",
       emergencyContact: "黃先生",
+      emergencyRelation: "兒子",
       emergencyPhone: "0919-402-885",
       careLevel: "長照2.0 4級",
       mobility: "需攙扶",
+      assistiveDevice: "助行器",
+      serviceArea: "士林區",
+      careManager: "蔡個管員",
+      careManagerPhone: "02-2558-7168",
       pickupAddress: "台北市士林區文林路 320 號",
       destinationAddress: "陽明日照中心",
+      rideNote: "上午血糖較低，請確認已用早餐。",
       note: "上午血糖較低，請確認已用早餐。",
       active: true,
     },
@@ -536,14 +611,24 @@ function render() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === activeView);
   });
-  document.getElementById("viewTitle").textContent = viewTitles[activeView];
+  const visibleView = protectedViews.has(activeView) && !coordinatorUnlocked ? "coordinatorGate" : activeView;
+  document.getElementById("viewTitle").textContent = viewTitles[visibleView];
   updateConnectionState();
 
-  if (activeView === "dashboard") renderDashboard();
-  if (activeView === "cases") renderCases();
-  if (activeView === "drivers") renderDrivers();
-  if (activeView === "driver") renderDriver();
-  if (activeView === "settings") renderSettings();
+  if (visibleView === "coordinatorGate") renderCoordinatorGate();
+  if (visibleView === "dashboard") renderDashboard();
+  if (visibleView === "cases") renderCases();
+  if (visibleView === "drivers") renderDrivers();
+  if (visibleView === "driver") renderDriver();
+  if (visibleView === "settings") renderSettings();
+}
+
+function requestView(view) {
+  activeView = view;
+  if (protectedViews.has(view) && !coordinatorUnlocked) {
+    pendingProtectedView = view;
+  }
+  render();
 }
 
 function applySidebarState() {
@@ -552,6 +637,34 @@ function applySidebarState() {
   if (!toggle) return;
   toggle.textContent = sidebarCollapsed ? "›" : "‹";
   toggle.setAttribute("aria-label", sidebarCollapsed ? "展開側邊選單" : "收合側邊選單");
+}
+
+function renderCoordinatorGate() {
+  const host = document.getElementById("appView");
+  host.replaceChildren(document.getElementById("coordinatorGateTemplate").content.cloneNode(true));
+
+  const form = document.getElementById("coordinatorGateForm");
+  const message = document.getElementById("coordinatorGateMessage");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const passcode = String(new FormData(form).get("passcode") || "").trim();
+    if (passcode !== COORDINATOR_PASSCODE) {
+      message.textContent = "密碼不正確，請確認後再試一次。";
+      return;
+    }
+
+    coordinatorUnlocked = true;
+    coordinatorPasscode = passcode;
+    sessionStorage.setItem(COORDINATOR_SESSION_KEY, "true");
+    sessionStorage.setItem(COORDINATOR_PASSCODE_KEY, passcode);
+    activeView = pendingProtectedView || "dashboard";
+    render();
+  });
+
+  document.getElementById("goDriverPortalBtn").addEventListener("click", () => {
+    activeView = "driver";
+    render();
+  });
 }
 
 function renderDashboard() {
@@ -975,16 +1088,16 @@ function renderCaseCard(person) {
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(person.name)} 操作選項">
         <button class="primary-btn" type="button" data-action="edit" data-case-id="${escapeHTML(person.id)}">
-          編輯
+          ✏️ 編輯
         </button>
         <button class="secondary-btn" type="button" data-action="trip" data-case-id="${escapeHTML(person.id)}" ${hasTodayTrip ? "disabled" : ""}>
-          ${hasTodayTrip ? "已在今日班表" : "加入今日班表"}
+          ${hasTodayTrip ? "✅ 已在今日班表" : "📅 加入今日班表"}
         </button>
         <button class="ghost-btn" type="button" data-action="toggle" data-case-id="${escapeHTML(person.id)}">
-          ${person.active ? "停用個案" : "恢復服務"}
+          ${person.active ? "⏸️ 停用個案" : "▶️ 恢復服務"}
         </button>
         <button class="danger-btn" type="button" data-action="delete" data-case-id="${escapeHTML(person.id)}">
-          刪除
+          🗑️ 刪除
         </button>
       </div>
     `
@@ -998,15 +1111,18 @@ function renderCaseCard(person) {
     <article class="case-card ${isSelected ? "selected" : ""}" data-case-id="${escapeHTML(person.id)}" tabindex="0">
       <div>
         <strong>${escapeHTML(person.name)}</strong>
-        <p class="subtext">${escapeHTML(person.caseNo)} · ${escapeHTML(person.careLevel)}</p>
+        <p class="subtext">${escapeHTML(person.caseNo)} · ${escapeHTML(person.gender || "未填性別")} · ${escapeHTML(person.careLevel)}</p>
         <p class="subtext">${escapeHTML(person.phone)}</p>
         <span class="status-pill ${activeClass}">${activeText}</span>
       </div>
       <div>
+        <p class="subtext">個管員：${escapeHTML(person.careManager || "未填")} ${person.careManagerPhone ? `· ${escapeHTML(person.careManagerPhone)}` : ""}</p>
+        <p class="subtext">服務區域：${escapeHTML(person.serviceArea || "未填")} · 輔具：${escapeHTML(person.assistiveDevice || "未填")}</p>
+        <p class="subtext">緊急聯絡：${escapeHTML(person.emergencyContact || "未填")} ${person.emergencyRelation ? `(${escapeHTML(person.emergencyRelation)})` : ""}</p>
         <p class="subtext">上車：${escapeHTML(person.pickupAddress)}</p>
         <p class="subtext">目的地：${escapeHTML(person.destinationAddress)}</p>
         <p class="subtext">行動：${escapeHTML(person.mobility)}</p>
-        <p class="subtext">備註：${escapeHTML(person.note || "無")}</p>
+        <p class="subtext">接送注意：${escapeHTML(person.rideNote || person.note || "無")}</p>
       </div>
       ${actions}
     </article>
@@ -1021,18 +1137,27 @@ function fillCaseForm(caseId) {
   form.elements.id.value = person.id;
   form.elements.name.value = person.name;
   form.elements.caseNo.value = person.caseNo;
+  form.elements.identityNo.value = person.identityNo || "";
+  form.elements.gender.value = person.gender || "";
+  form.elements.birthDate.value = person.birthDate || "";
   form.elements.phone.value = person.phone;
   form.elements.emergencyContact.value = person.emergencyContact || "";
+  form.elements.emergencyRelation.value = person.emergencyRelation || "";
   form.elements.emergencyPhone.value = person.emergencyPhone || "";
   form.elements.careLevel.value = person.careLevel;
   form.elements.mobility.value = person.mobility;
+  form.elements.assistiveDevice.value = person.assistiveDevice || "";
+  form.elements.serviceArea.value = person.serviceArea || "";
+  form.elements.careManager.value = person.careManager || "";
+  form.elements.careManagerPhone.value = person.careManagerPhone || "";
   form.elements.pickupAddress.value = person.pickupAddress;
   form.elements.destinationAddress.value = person.destinationAddress;
+  form.elements.rideNote.value = person.rideNote || "";
   form.elements.note.value = person.note || "";
   form.elements.createTrip.checked = false;
   form.elements.createTrip.disabled = true;
   document.getElementById("caseFormMode").textContent = "編輯個案";
-  document.getElementById("caseSubmitBtn").textContent = "儲存個案";
+  document.getElementById("caseSubmitBtn").textContent = "💾 儲存個案";
 }
 
 async function handleCaseSubmit(event) {
@@ -1044,13 +1169,22 @@ async function handleCaseSubmit(event) {
     id: editingId || uid("case"),
     caseNo: String(form.get("caseNo")).trim(),
     name: String(form.get("name")).trim(),
+    identityNo: String(form.get("identityNo")).trim(),
+    gender: String(form.get("gender")).trim(),
+    birthDate: String(form.get("birthDate")).trim(),
     phone: String(form.get("phone")).trim(),
     emergencyContact: String(form.get("emergencyContact")).trim(),
+    emergencyRelation: String(form.get("emergencyRelation")).trim(),
     emergencyPhone: String(form.get("emergencyPhone")).trim(),
     careLevel: String(form.get("careLevel")),
     mobility: String(form.get("mobility")),
+    assistiveDevice: String(form.get("assistiveDevice")).trim(),
+    serviceArea: String(form.get("serviceArea")).trim(),
+    careManager: String(form.get("careManager")).trim(),
+    careManagerPhone: String(form.get("careManagerPhone")).trim(),
     pickupAddress: String(form.get("pickupAddress")).trim(),
     destinationAddress: String(form.get("destinationAddress")).trim(),
+    rideNote: String(form.get("rideNote")).trim(),
     note: String(form.get("note")).trim(),
     active: existingCase?.active ?? true,
   };
@@ -1208,11 +1342,28 @@ function renderDrivers() {
   const host = document.getElementById("appView");
   host.replaceChildren(document.getElementById("driversTemplate").content.cloneNode(true));
 
+  if (selectedDriverId && !state.drivers.some((driver) => driver.id === selectedDriverId)) {
+    selectedDriverId = "";
+  }
+
+  const formPanel = document.getElementById("driverFormPanel");
+  const workspace = document.getElementById("driverWorkspace");
+  const isFormOpen = driverFormOpen || Boolean(editingDriverId);
+  formPanel.hidden = !isFormOpen;
+  workspace.classList.toggle("form-open", isFormOpen);
+
   document.getElementById("driverCount").textContent = `${state.drivers.length} 位司機`;
   document.getElementById("driverList").innerHTML = state.drivers.map(renderDriverManageCard).join("");
+  document.getElementById("openDriverFormBtn").addEventListener("click", () => {
+    editingDriverId = "";
+    selectedDriverId = "";
+    driverFormOpen = true;
+    renderDrivers();
+  });
   document.getElementById("driverForm").addEventListener("submit", handleDriverSubmit);
   document.getElementById("driverCancelBtn").addEventListener("click", () => {
     editingDriverId = "";
+    driverFormOpen = false;
     renderDrivers();
   });
   document.getElementById("driverList").addEventListener("click", handleDriverManageAction);
@@ -1222,9 +1373,25 @@ function renderDrivers() {
 function renderDriverManageCard(driver) {
   const activeText = driver.active ? "服務中" : "已停用";
   const activeClass = driver.active ? "completed" : "scheduled";
+  const isSelected = selectedDriverId === driver.id;
+  const actions = isSelected
+    ? `
+      <div class="task-actions case-actions-panel" aria-label="${escapeHTML(driver.name)} 操作選項">
+        <button class="primary-btn" type="button" data-action="edit" data-driver-id="${escapeHTML(driver.id)}">✏️ 編輯</button>
+        <button class="ghost-btn" type="button" data-action="toggle" data-driver-id="${escapeHTML(driver.id)}">
+          ${driver.active ? "⏸️ 停用司機" : "▶️ 恢復服務"}
+        </button>
+        <button class="danger-btn" type="button" data-action="delete" data-driver-id="${escapeHTML(driver.id)}">🗑️ 刪除</button>
+      </div>
+    `
+    : `
+      <div class="case-card-hint">
+        點選司機顯示操作
+      </div>
+    `;
 
   return `
-    <article class="case-card">
+    <article class="case-card ${isSelected ? "selected" : ""}" data-driver-id="${escapeHTML(driver.id)}" tabindex="0">
       <div>
         <strong>${escapeHTML(driver.name)}</strong>
         <p class="subtext">${escapeHTML(driver.routeLabel)} · ${escapeHTML(driver.vehicleNo)}</p>
@@ -1236,13 +1403,7 @@ function renderDriverManageCard(driver) {
         <p class="subtext">最新定位：${escapeHTML(formatCoordinate(state.driverLocations[driver.id]))}</p>
         <p class="subtext">更新時間：${escapeHTML(formatEventTime(state.driverLocations[driver.id]?.updatedAt))}</p>
       </div>
-      <div class="task-actions">
-        <button class="primary-btn" type="button" data-action="edit" data-driver-id="${escapeHTML(driver.id)}">編輯</button>
-        <button class="ghost-btn" type="button" data-action="toggle" data-driver-id="${escapeHTML(driver.id)}">
-          ${driver.active ? "停用司機" : "恢復服務"}
-        </button>
-        <button class="danger-btn" type="button" data-action="delete" data-driver-id="${escapeHTML(driver.id)}">刪除</button>
-      </div>
+      ${actions}
     </article>
   `;
 }
@@ -1260,7 +1421,7 @@ function fillDriverForm(driverId) {
   form.elements.pin.value = driver.pin || "";
   form.elements.active.value = String(Boolean(driver.active));
   document.getElementById("driverFormMode").textContent = "編輯司機";
-  document.getElementById("driverSubmitBtn").textContent = "儲存司機";
+  document.getElementById("driverSubmitBtn").textContent = "💾 儲存司機";
 }
 
 async function handleDriverSubmit(event) {
@@ -1281,6 +1442,8 @@ async function handleDriverSubmit(event) {
     try {
       await apiAction(editingId ? "update_driver" : "create_driver", { driver });
       editingDriverId = "";
+      selectedDriverId = driver.id;
+      driverFormOpen = false;
       renderDrivers();
     } catch (error) {
       dataMessage = `司機資料儲存失敗：${error.message}`;
@@ -1303,19 +1466,31 @@ async function handleDriverSubmit(event) {
     };
   }
   editingDriverId = "";
+  selectedDriverId = driver.id;
+  driverFormOpen = false;
   saveState();
   renderDrivers();
 }
 
 async function handleDriverManageAction(event) {
   const button = event.target.closest("button[data-action]");
-  if (!button) return;
+  if (!button) {
+    const card = event.target.closest(".case-card[data-driver-id]");
+    if (!card) return;
+    selectedDriverId = card.dataset.driverId === selectedDriverId ? "" : card.dataset.driverId;
+    editingDriverId = "";
+    driverFormOpen = false;
+    renderDrivers();
+    return;
+  }
 
   const driver = state.drivers.find((item) => item.id === button.dataset.driverId);
   if (!driver) return;
+  selectedDriverId = driver.id;
 
   if (button.dataset.action === "edit") {
     editingDriverId = driver.id;
+    driverFormOpen = true;
     renderDrivers();
     return;
   }
@@ -1331,8 +1506,10 @@ async function handleDriverManageAction(event) {
       }
       if (button.dataset.action === "delete") {
         await apiAction("delete_driver", { driverId: driver.id });
+        selectedDriverId = "";
       }
       editingDriverId = "";
+      driverFormOpen = false;
       renderDrivers();
     } catch (error) {
       dataMessage = `司機資料更新失敗：${error.message}`;
@@ -1348,8 +1525,10 @@ async function handleDriverManageAction(event) {
     state.trips = state.trips.filter((trip) => trip.driverId !== driver.id);
     delete state.driverLocations[driver.id];
     state.drivers = state.drivers.filter((item) => item.id !== driver.id);
+    selectedDriverId = "";
   }
   editingDriverId = "";
+  driverFormOpen = false;
   saveState();
   renderDrivers();
 }
@@ -1676,8 +1855,7 @@ async function init() {
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
-      activeView = button.dataset.view;
-      render();
+      requestView(button.dataset.view);
     });
   });
 

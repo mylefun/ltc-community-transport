@@ -22,24 +22,24 @@
 
         <nav class="nav-list">
           <button class="nav-item active" data-view="dashboard" aria-label="承辦人工作台">
-            <span aria-hidden="true">▦</span>
+            <span aria-hidden="true">🏠</span>
             <b>承辦人工作台</b>
           </button>
           <button class="nav-item" data-view="cases" aria-label="個案資料">
-            <span aria-hidden="true">◎</span>
+            <span aria-hidden="true">🧑‍🦽</span>
             <b>個案資料</b>
           </button>
           <button class="nav-item" data-view="drivers" aria-label="司機管理">
-            <span aria-hidden="true">◫</span>
+            <span aria-hidden="true">🚐</span>
             <b>司機管理</b>
           </button>
           <button class="nav-item" data-view="driver" aria-label="司機入口">
-            <span aria-hidden="true">▣</span>
+            <span aria-hidden="true">📍</span>
             <b>司機入口</b>
           </button>
-          <button class="nav-item" data-view="settings" aria-label="系統設定">
-            <span aria-hidden="true">◇</span>
-            <b>系統設定</b>
+          <button class="nav-item" data-view="settings" aria-label="版本更新紀錄">
+            <span aria-hidden="true">✨</span>
+            <b>版本更新紀錄</b>
           </button>
         </nav>
 
@@ -129,7 +129,7 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">管理個案資料</p>
-              <h3>個案名冊</h3>
+              <h3><span class="section-icon" aria-hidden="true">🧑‍🦽</span>個案名冊</h3>
             </div>
             <div class="heading-actions">
               <span class="count-pill" id="caseCount"></span>
@@ -143,7 +143,7 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow" id="caseFormMode">新增個案</p>
-              <h3>個案資料</h3>
+              <h3><span class="section-icon" aria-hidden="true">📝</span>個案資料</h3>
             </div>
           </div>
           <form class="case-form" id="caseForm">
@@ -157,12 +157,33 @@
               <input required name="caseNo" placeholder="LTC-006" />
             </label>
             <label>
+              身分證字號
+              <input name="identityNo" autocomplete="off" />
+            </label>
+            <label>
+              性別
+              <select name="gender">
+                <option value="">未填</option>
+                <option>女</option>
+                <option>男</option>
+                <option>其他</option>
+              </select>
+            </label>
+            <label>
+              出生日期
+              <input name="birthDate" type="date" />
+            </label>
+            <label>
               聯絡電話
               <input required name="phone" inputmode="tel" />
             </label>
             <label>
               緊急聯絡人
               <input name="emergencyContact" />
+            </label>
+            <label>
+              關係
+              <input name="emergencyRelation" placeholder="子女、配偶、照顧者" />
             </label>
             <label>
               緊急電話
@@ -187,6 +208,22 @@
                 <option>臥床移位</option>
               </select>
             </label>
+            <label>
+              輔具/車型需求
+              <input name="assistiveDevice" placeholder="輪椅、爬梯機、陪同者" />
+            </label>
+            <label>
+              服務區域
+              <input name="serviceArea" placeholder="中正區、萬華區" />
+            </label>
+            <label>
+              個管員
+              <input name="careManager" />
+            </label>
+            <label>
+              個管員電話
+              <input name="careManagerPhone" inputmode="tel" />
+            </label>
             <label class="full">
               上車地址
               <input required name="pickupAddress" />
@@ -194,6 +231,10 @@
             <label class="full">
               目的地
               <input required name="destinationAddress" />
+            </label>
+            <label class="full">
+              接送注意事項
+              <textarea name="rideNote" rows="2"></textarea>
             </label>
             <label class="full">
               備註
@@ -218,7 +259,7 @@
               <span>同步加入今日接送班表</span>
             </label>
             <div class="form-actions full">
-              <button class="primary-btn" type="submit" id="caseSubmitBtn">新增個案</button>
+              <button class="primary-btn" type="submit" id="caseSubmitBtn">＋ 新增個案</button>
               <button class="ghost-btn" type="button" id="caseCancelBtn">清除</button>
             </div>
           </form>
@@ -227,23 +268,26 @@
     </template>
 
     <template id="driversTemplate">
-      <div class="split-layout">
+      <div class="case-workspace" id="driverWorkspace">
         <section class="work-section">
           <div class="section-heading">
             <div>
               <p class="eyebrow">管理司機資料</p>
-              <h3>司機名冊</h3>
+              <h3><span class="section-icon" aria-hidden="true">🚐</span>司機名冊</h3>
             </div>
-            <span class="count-pill" id="driverCount"></span>
+            <div class="heading-actions">
+              <span class="count-pill" id="driverCount"></span>
+              <button class="icon-add-btn" id="openDriverFormBtn" type="button" aria-label="新增司機">+</button>
+            </div>
           </div>
           <div class="case-list" id="driverList"></div>
         </section>
 
-        <section class="work-section compact-section">
+        <section class="work-section compact-section case-form-panel" id="driverFormPanel" hidden>
           <div class="section-heading">
             <div>
               <p class="eyebrow" id="driverFormMode">新增司機</p>
-              <h3>司機資料</h3>
+              <h3><span class="section-icon" aria-hidden="true">🪪</span>司機資料</h3>
             </div>
           </div>
           <form class="case-form" id="driverForm">
@@ -276,7 +320,7 @@
               </select>
             </label>
             <div class="form-actions full">
-              <button class="primary-btn" type="submit" id="driverSubmitBtn">新增司機</button>
+              <button class="primary-btn" type="submit" id="driverSubmitBtn">＋ 新增司機</button>
               <button class="ghost-btn" type="button" id="driverCancelBtn">清除</button>
             </div>
           </form>
@@ -288,12 +332,32 @@
       <section class="driver-view" id="driverView"></section>
     </template>
 
+    <template id="coordinatorGateTemplate">
+      <section class="gate-panel">
+        <div class="gate-card">
+          <span class="gate-icon" aria-hidden="true">🔐</span>
+          <p class="eyebrow">承辦人限定</p>
+          <h3>請先解鎖個管資料</h3>
+          <p class="subtext">個案資料、承辦人工作台、司機管理與版本紀錄只開放承辦人查看與編輯。</p>
+          <form class="gate-form" id="coordinatorGateForm">
+            <label>
+              承辦人密碼
+              <input name="passcode" type="password" inputmode="numeric" autocomplete="current-password" placeholder="請輸入承辦人密碼" />
+            </label>
+            <p class="form-message" id="coordinatorGateMessage"></p>
+            <button class="primary-btn" type="submit">解鎖</button>
+            <button class="ghost-btn" type="button" id="goDriverPortalBtn">前往司機入口</button>
+          </form>
+        </div>
+      </section>
+    </template>
+
     <template id="settingsTemplate">
       <section class="work-section">
         <div class="section-heading">
           <div>
             <p class="eyebrow">系統版本</p>
-            <h3>更新紀錄</h3>
+            <h3><span class="section-icon" aria-hidden="true">✨</span>版本更新紀錄</h3>
           </div>
         </div>
         <div class="release-list" id="releaseList"></div>
