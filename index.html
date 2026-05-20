@@ -9,30 +9,37 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar" aria-label="主選單">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true">交</span>
-          <div>
-            <p class="eyebrow">長照社區交通</p>
-            <h1>每日接送系統</h1>
+        <div class="sidebar-head">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">交</span>
+            <div class="brand-text">
+              <p class="eyebrow">長照社區交通</p>
+              <h1>每日接送系統</h1>
+            </div>
           </div>
+          <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="收合側邊選單">‹</button>
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item active" data-view="dashboard">
+          <button class="nav-item active" data-view="dashboard" aria-label="承辦人工作台">
             <span aria-hidden="true">▦</span>
-            承辦人工作台
+            <b>承辦人工作台</b>
           </button>
-          <button class="nav-item" data-view="cases">
+          <button class="nav-item" data-view="cases" aria-label="個案資料">
             <span aria-hidden="true">◎</span>
-            個案資料
+            <b>個案資料</b>
           </button>
-          <button class="nav-item" data-view="driver">
+          <button class="nav-item" data-view="drivers" aria-label="司機管理">
+            <span aria-hidden="true">◫</span>
+            <b>司機管理</b>
+          </button>
+          <button class="nav-item" data-view="driver" aria-label="司機入口">
             <span aria-hidden="true">▣</span>
-            司機入口
+            <b>司機入口</b>
           </button>
-          <button class="nav-item" data-view="settings">
+          <button class="nav-item" data-view="settings" aria-label="系統設定">
             <span aria-hidden="true">◇</span>
-            系統設定
+            <b>系統設定</b>
           </button>
         </nav>
 
@@ -87,16 +94,6 @@
           </div>
           <div class="live-map" id="liveMap" aria-label="司機定位地圖"></div>
         </div>
-
-        <aside class="work-section compact-section">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">定位紀錄</p>
-              <h3>最新動態</h3>
-            </div>
-          </div>
-          <div class="location-feed" id="locationFeed"></div>
-        </aside>
       </section>
 
       <section class="work-section">
@@ -142,11 +139,12 @@
         <section class="work-section compact-section">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">新增個案</p>
-              <h3>基本資料</h3>
+              <p class="eyebrow" id="caseFormMode">新增個案</p>
+              <h3>個案資料</h3>
             </div>
           </div>
           <form class="case-form" id="caseForm">
+            <input type="hidden" name="id" />
             <label>
               個案姓名
               <input required name="name" autocomplete="name" />
@@ -158,6 +156,14 @@
             <label>
               聯絡電話
               <input required name="phone" inputmode="tel" />
+            </label>
+            <label>
+              緊急聯絡人
+              <input name="emergencyContact" />
+            </label>
+            <label>
+              緊急電話
+              <input name="emergencyPhone" inputmode="tel" />
             </label>
             <label>
               照顧等級
@@ -208,7 +214,68 @@
               <input name="createTrip" type="checkbox" checked />
               <span>同步加入今日接送班表</span>
             </label>
-            <button class="primary-btn full" type="submit">新增個案</button>
+            <div class="form-actions full">
+              <button class="primary-btn" type="submit" id="caseSubmitBtn">新增個案</button>
+              <button class="ghost-btn" type="button" id="caseCancelBtn">清除</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </template>
+
+    <template id="driversTemplate">
+      <div class="split-layout">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">管理司機資料</p>
+              <h3>司機名冊</h3>
+            </div>
+            <span class="count-pill" id="driverCount"></span>
+          </div>
+          <div class="case-list" id="driverList"></div>
+        </section>
+
+        <section class="work-section compact-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow" id="driverFormMode">新增司機</p>
+              <h3>司機資料</h3>
+            </div>
+          </div>
+          <form class="case-form" id="driverForm">
+            <input type="hidden" name="id" />
+            <label>
+              司機姓名
+              <input required name="name" />
+            </label>
+            <label>
+              聯絡電話
+              <input required name="phone" inputmode="tel" />
+            </label>
+            <label>
+              車號
+              <input required name="vehicleNo" placeholder="KAA-1032" />
+            </label>
+            <label>
+              路線
+              <input required name="routeLabel" placeholder="A 線" />
+            </label>
+            <label>
+              快速登入 PIN
+              <input required name="pin" inputmode="numeric" maxlength="8" />
+            </label>
+            <label>
+              狀態
+              <select name="active">
+                <option value="true">服務中</option>
+                <option value="false">停用</option>
+              </select>
+            </label>
+            <div class="form-actions full">
+              <button class="primary-btn" type="submit" id="driverSubmitBtn">新增司機</button>
+              <button class="ghost-btn" type="button" id="driverCancelBtn">清除</button>
+            </div>
           </form>
         </section>
       </div>
@@ -219,37 +286,15 @@
     </template>
 
     <template id="settingsTemplate">
-      <div class="split-layout settings-layout">
-        <section class="work-section">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">後端資料庫</p>
-              <h3>Supabase 結構</h3>
-            </div>
+      <section class="work-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">系統版本</p>
+            <h3>更新紀錄</h3>
           </div>
-          <div class="schema-block">
-            <p>正式環境使用 Supabase Auth、Row Level Security、RPC 打卡函式與事件紀錄表。</p>
-            <ul>
-              <li><strong>cases</strong>：個案基本資料、地址、照顧等級、行動狀態。</li>
-              <li><strong>drivers</strong>：司機、車號、路線、對應登入帳號。</li>
-              <li><strong>daily_rides</strong>：每日接送班表、預定時間、實際接到與送達時間。</li>
-              <li><strong>ride_events</strong>：每次接到、送達、取消、備註的事件軌跡與定位。</li>
-              <li><strong>driver_locations</strong>：每位司機最新位置，提供承辦人地圖查詢。</li>
-            </ul>
-          </div>
-          <a class="file-link" href="./supabase-schema.sql">查看 Supabase SQL</a>
-        </section>
-
-        <section class="work-section compact-section">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">司機快速登入</p>
-              <h3>示範 PIN</h3>
-            </div>
-          </div>
-          <div class="driver-pin-list" id="driverPinList"></div>
-        </section>
-      </div>
+        </div>
+        <div class="release-list" id="releaseList"></div>
+      </section>
     </template>
 
     <script src="./app.js" defer></script>

@@ -191,22 +191,27 @@ function demoCases() {
 }
 
 async function seedIfEmpty() {
-  const existingDrivers = await supabase("drivers?select=id&limit=1");
-  const existingCases = await supabase("cases?select=id&limit=1");
+  let drivers = await supabase("drivers?select=*&order=route_label.asc");
+  let cases = await supabase("cases?select=*&order=case_no.asc");
 
-  if (existingDrivers.length && existingCases.length) return;
+  if (!drivers.length) {
+    drivers = await supabase("drivers", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(demoDrivers()),
+    });
+  }
 
-  const drivers = await supabase("drivers", {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(demoDrivers()),
-  });
+  if (!cases.length) {
+    cases = await supabase("cases", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(demoCases()),
+    });
+  }
 
-  const cases = await supabase("cases", {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(demoCases()),
-  });
+  const existingRides = await supabase(`daily_rides?select=id&service_date=eq.${todayKey()}&limit=1`);
+  if (existingRides.length) return;
 
   const driverByRoute = Object.fromEntries(drivers.map((driver) => [driver.route_label, driver]));
   const caseByNo = Object.fromEntries(cases.map((person) => [person.case_no, person]));
@@ -359,17 +364,7 @@ async function handleAction(action, payload = {}) {
     const person = await supabase("cases", {
       method: "POST",
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify({
-        case_no: payload.case.caseNo,
-        full_name: payload.case.name,
-        phone: payload.case.phone,
-        care_level: payload.case.careLevel,
-        mobility_type: payload.case.mobility,
-        pickup_address: payload.case.pickupAddress,
-        default_destination: payload.case.destinationAddress,
-        notes: payload.case.note,
-        active: true,
-      }),
+      body: JSON.stringify(casePayload(payload.case)),
     });
 
     if (payload.trip) {
@@ -390,12 +385,75 @@ async function handleAction(action, payload = {}) {
     }
   }
 
+  if (action === "update_case") {
+    await supabase(`cases?id=eq.${encodeURIComponent(payload.case.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(casePayload(payload.case)),
+    });
+  }
+
   if (action === "toggle_case") {
     await supabase(`cases?id=eq.${encodeURIComponent(payload.caseId)}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ active: payload.active }),
     });
+  }
+
+  if (action === "delete_case") {
+    await supabase(`daily_rides?case_id=eq.${encodeURIComponent(payload.caseId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+    await supabase(`cases?id=eq.${encodeURIComponent(payload.caseId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+  }
+
+  if (action === "create_driver") {
+    await supabase("drivers", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(driverPayload(payload.driver)),
+    });
+  }
+
+  if (action === "update_driver") {
+    await supabase(`drivers?id=eq.${encodeURIComponent(payload.driver.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(driverPayload(payload.driver)),
+    });
+  }
+
+  if (action === "toggle_driver") {
+    await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ active: payload.active }),
+    });
+  }
+
+  if (action === "delete_driver") {
+    const rides = await supabase(`daily_rides?select=id&driver_id=eq.${encodeURIComponent(payload.driverId)}&limit=1`);
+    if (rides.length) {
+      await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ active: false }),
+      });
+    } else {
+      await supabase(`driver_locations?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+      await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+    }
   }
 
   if (action === "create_trip") {
@@ -419,14 +477,41 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "pickup") {
-    await rpc("mark_ride_pickup", rpcPayload(payload));
+    await markRideEvent("pickup", payload);
   }
 
   if (action === "dropoff") {
-    await rpc("mark_ride_dropoff", rpcPayload(payload));
+    await markRideEvent("dropoff", payload);
   }
 
   return readState();
+}
+
+function casePayload(person) {
+  return {
+    case_no: person.caseNo,
+    full_name: person.name,
+    phone: person.phone,
+    emergency_contact: person.emergencyContact || null,
+    emergency_phone: person.emergencyPhone || null,
+    care_level: person.careLevel,
+    mobility_type: person.mobility,
+    pickup_address: person.pickupAddress,
+    default_destination: person.destinationAddress,
+    notes: person.note || null,
+    active: person.active ?? true,
+  };
+}
+
+function driverPayload(driver) {
+  return {
+    display_name: driver.name,
+    phone: driver.phone,
+    vehicle_no: driver.vehicleNo,
+    route_label: driver.routeLabel,
+    quick_login_code_hash: driver.pin,
+    active: driver.active ?? true,
+  };
 }
 
 function rpcPayload(payload) {
@@ -437,6 +522,72 @@ function rpcPayload(payload) {
     p_accuracy_meters: payload.location?.accuracy ?? null,
     p_location_source: payload.location?.source || "gps",
   };
+}
+
+async function markRideEvent(type, payload) {
+  const rides = await supabase(`daily_rides?select=*&id=eq.${encodeURIComponent(payload.tripId)}&limit=1`);
+  const ride = rides[0];
+  if (!ride) throw new Error("Ride not found");
+
+  if (type === "dropoff" && !ride.pickup_at) {
+    throw new Error("請先紀錄接到個案時間");
+  }
+
+  const occurredAt = new Date().toISOString();
+  const location = payload.location || {};
+  const patch =
+    type === "pickup"
+      ? {
+          pickup_at: ride.pickup_at || occurredAt,
+          pickup_lat: location.lat ?? ride.pickup_lat ?? null,
+          pickup_lng: location.lng ?? ride.pickup_lng ?? null,
+        }
+      : {
+          dropoff_at: ride.dropoff_at || occurredAt,
+          dropoff_lat: location.lat ?? ride.dropoff_lat ?? null,
+          dropoff_lng: location.lng ?? ride.dropoff_lng ?? null,
+        };
+
+  const updated = await supabase(`daily_rides?id=eq.${encodeURIComponent(payload.tripId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(patch),
+  });
+
+  const nextRide = updated[0] || ride;
+  const eventAt = type === "pickup" ? nextRide.pickup_at : nextRide.dropoff_at;
+
+  await supabase("ride_events", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      ride_id: ride.id,
+      driver_id: ride.driver_id,
+      event_type: type,
+      occurred_at: eventAt,
+      latitude: location.lat ?? null,
+      longitude: location.lng ?? null,
+      accuracy_meters: location.accuracy ?? null,
+      location_source: location.source || "gps",
+    }),
+  });
+
+  if (location.lat && location.lng) {
+    await supabase("driver_locations?on_conflict=driver_id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({
+        driver_id: ride.driver_id,
+        ride_id: ride.id,
+        latitude: location.lat,
+        longitude: location.lng,
+        accuracy_meters: location.accuracy ?? null,
+        event_type: type,
+        location_source: location.source || "gps",
+        updated_at: eventAt,
+      }),
+    });
+  }
 }
 
 export default async function handler(req, res) {

@@ -3,6 +3,7 @@ const STORAGE_KEY = "ltc-community-transport-v1";
 const viewTitles = {
   dashboard: "承辦人工作台",
   cases: "個案資料",
+  drivers: "司機管理",
   driver: "司機入口",
   settings: "系統設定",
 };
@@ -20,6 +21,34 @@ const eventLabels = {
   heartbeat: "目前位置",
 };
 
+const releaseNotes = [
+  {
+    version: "v0.5.0",
+    date: "2026-05-20",
+    items: ["側邊選單支援收合", "新增個案與司機完整管理", "接送地圖顯示個案路徑", "Supabase 寫入流程補齊 CRUD"],
+  },
+  {
+    version: "v0.4.0",
+    date: "2026-05-20",
+    items: ["承辦人地圖新增縮放與拖曳", "優化地圖控制介面"],
+  },
+  {
+    version: "v0.3.0",
+    date: "2026-05-20",
+    items: ["新增 Vercel API 串接 Supabase", "打卡時間與定位寫入資料庫"],
+  },
+  {
+    version: "v0.2.0",
+    date: "2026-05-20",
+    items: ["新增司機定位地圖", "司機接到與送達同步記錄座標"],
+  },
+  {
+    version: "v0.1.0",
+    date: "2026-05-20",
+    items: ["建立承辦人工作台", "新增個案名冊與司機快速登入原型"],
+  },
+];
+
 const taipeiBounds = {
   minLat: 25.005,
   maxLat: 25.105,
@@ -36,6 +65,9 @@ let filters = {
   driver: "all",
   status: "all",
 };
+let sidebarCollapsed = localStorage.getItem("ltc-sidebar-collapsed") === "true";
+let editingCaseId = "";
+let editingDriverId = "";
 let mapView = {
   zoom: 1,
   panX: 0,
@@ -485,6 +517,7 @@ function filteredTrips() {
 }
 
 function render() {
+  applySidebarState();
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === activeView);
   });
@@ -493,8 +526,17 @@ function render() {
 
   if (activeView === "dashboard") renderDashboard();
   if (activeView === "cases") renderCases();
+  if (activeView === "drivers") renderDrivers();
   if (activeView === "driver") renderDriver();
   if (activeView === "settings") renderSettings();
+}
+
+function applySidebarState() {
+  document.body.classList.toggle("sidebar-collapsed", sidebarCollapsed);
+  const toggle = document.getElementById("sidebarToggle");
+  if (!toggle) return;
+  toggle.textContent = sidebarCollapsed ? "›" : "‹";
+  toggle.setAttribute("aria-label", sidebarCollapsed ? "展開側邊選單" : "收合側邊選單");
 }
 
 function renderDashboard() {
@@ -523,7 +565,6 @@ function renderDashboard() {
 
   document.getElementById("mapDriverCount").textContent = `${state.drivers.length} 位司機`;
   document.getElementById("liveMap").innerHTML = renderDriverMap();
-  document.getElementById("locationFeed").innerHTML = renderLocationFeed();
   setupMapControls();
 
   const driverFilter = document.getElementById("driverFilter");
@@ -573,6 +614,11 @@ function renderDashboard() {
 }
 
 function renderDriverMap() {
+  const routeLines = todayTrips()
+    .filter((trip) => getTripStatus(trip) !== "completed")
+    .map(renderMapRoute)
+    .join("");
+
   const driverMarkers = state.drivers.map((driver) => {
     const location = state.driverLocations[driver.id] ?? {
       ...driver.homeLocation,
@@ -610,6 +656,9 @@ function renderDriverMap() {
       style="transform: translate(${mapView.panX}px, ${mapView.panY}px) scale(${mapView.zoom})"
     >
       <div class="map-grid-lines" aria-hidden="true"></div>
+      <svg class="map-routes" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        ${routeLines}
+      </svg>
       <div class="map-road horizontal road-a" aria-hidden="true"></div>
       <div class="map-road horizontal road-b" aria-hidden="true"></div>
       <div class="map-road vertical road-c" aria-hidden="true"></div>
@@ -620,6 +669,52 @@ function renderDriverMap() {
       ${driverMarkers.join("")}
     </div>
   `;
+}
+
+function renderMapRoute(trip) {
+  const person = getCase(trip.caseId);
+  const driver = getDriver(trip.driverId);
+  if (!person || !driver) return "";
+
+  const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
+  const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
+  const driverLocation = state.driverLocations[trip.driverId];
+  const status = getTripStatus(trip);
+  const start = status === "picked_up" && driverLocation ? driverLocation : pickup;
+  const end = status === "picked_up" ? destination : destination;
+  const mid = status === "picked_up" && driverLocation ? mapPoint(driverLocation) : null;
+  const startPoint = mapPoint(start);
+  const endPoint = mapPoint(end);
+  const strokeClass = status === "picked_up" ? "active" : status === "late" ? "late" : "scheduled";
+  const path = mid
+    ? `M ${startPoint.x} ${startPoint.y} Q ${(startPoint.x + endPoint.x) / 2} ${Math.min(startPoint.y, endPoint.y) - 10} ${endPoint.x} ${endPoint.y}`
+    : `M ${startPoint.x} ${startPoint.y} L ${endPoint.x} ${endPoint.y}`;
+
+  return `
+    <path class="route-line ${strokeClass}" d="${path}" />
+    <circle class="route-dot start" cx="${startPoint.x}" cy="${startPoint.y}" r="1.35" />
+    <circle class="route-dot end" cx="${endPoint.x}" cy="${endPoint.y}" r="1.35" />
+    <text class="route-label" x="${(startPoint.x + endPoint.x) / 2}" y="${(startPoint.y + endPoint.y) / 2}">
+      ${escapeHTML(driver.name.slice(0, 1))}-${escapeHTML(person.name.slice(0, 1))}
+    </text>
+  `;
+}
+
+function caseCoordinate(caseId, type) {
+  const known = {
+    case_001: { pickup: { lat: 25.0268, lng: 121.5199 }, destination: { lat: 25.0362, lng: 121.5278 } },
+    case_002: { pickup: { lat: 25.0322, lng: 121.5397 }, destination: { lat: 25.0349, lng: 121.552 } },
+    case_003: { pickup: { lat: 25.0302, lng: 121.509 }, destination: { lat: 25.0357, lng: 121.5062 } },
+    case_004: { pickup: { lat: 25.064, lng: 121.5423 }, destination: { lat: 25.0691, lng: 121.5325 } },
+    case_005: { pickup: { lat: 25.0875, lng: 121.5255 }, destination: { lat: 25.0976, lng: 121.532 } },
+  };
+
+  if (known[caseId]?.[type]) return known[caseId][type];
+  const seed = [...`${caseId}-${type}`].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return {
+    lat: Number((25.018 + (seed % 70) * 0.0011).toFixed(6)),
+    lng: Number((121.49 + (seed % 85) * 0.0011).toFixed(6)),
+  };
 }
 
 function setupMapControls() {
@@ -826,11 +921,17 @@ function renderCases() {
 
   const driverSelect = document.getElementById("caseDriverSelect");
   driverSelect.innerHTML = state.drivers
+    .filter((driver) => driver.active)
     .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.routeLabel)}</option>`)
     .join("");
 
   document.getElementById("caseForm").addEventListener("submit", handleCaseSubmit);
+  document.getElementById("caseCancelBtn").addEventListener("click", () => {
+    editingCaseId = "";
+    renderCases();
+  });
   document.getElementById("caseList").addEventListener("click", handleCaseAction);
+  if (editingCaseId) fillCaseForm(editingCaseId);
 }
 
 function renderCaseCard(person) {
@@ -853,38 +954,68 @@ function renderCaseCard(person) {
         <p class="subtext">備註：${escapeHTML(person.note || "無")}</p>
       </div>
       <div class="task-actions">
+        <button class="primary-btn" type="button" data-action="edit" data-case-id="${escapeHTML(person.id)}">
+          編輯
+        </button>
         <button class="secondary-btn" type="button" data-action="trip" data-case-id="${escapeHTML(person.id)}" ${hasTodayTrip ? "disabled" : ""}>
           ${hasTodayTrip ? "已在今日班表" : "加入今日班表"}
         </button>
         <button class="ghost-btn" type="button" data-action="toggle" data-case-id="${escapeHTML(person.id)}">
           ${person.active ? "停用個案" : "恢復服務"}
         </button>
+        <button class="danger-btn" type="button" data-action="delete" data-case-id="${escapeHTML(person.id)}">
+          刪除
+        </button>
       </div>
     </article>
   `;
 }
 
+function fillCaseForm(caseId) {
+  const person = getCase(caseId);
+  const form = document.getElementById("caseForm");
+  if (!person || !form) return;
+
+  form.elements.id.value = person.id;
+  form.elements.name.value = person.name;
+  form.elements.caseNo.value = person.caseNo;
+  form.elements.phone.value = person.phone;
+  form.elements.emergencyContact.value = person.emergencyContact || "";
+  form.elements.emergencyPhone.value = person.emergencyPhone || "";
+  form.elements.careLevel.value = person.careLevel;
+  form.elements.mobility.value = person.mobility;
+  form.elements.pickupAddress.value = person.pickupAddress;
+  form.elements.destinationAddress.value = person.destinationAddress;
+  form.elements.note.value = person.note || "";
+  form.elements.createTrip.checked = false;
+  form.elements.createTrip.disabled = true;
+  document.getElementById("caseFormMode").textContent = "編輯個案";
+  document.getElementById("caseSubmitBtn").textContent = "儲存個案";
+}
+
 async function handleCaseSubmit(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
+  const editingId = String(form.get("id") || "").trim();
+  const existingCase = editingId ? getCase(editingId) : null;
   const newCase = {
-    id: uid("case"),
+    id: editingId || uid("case"),
     caseNo: String(form.get("caseNo")).trim(),
     name: String(form.get("name")).trim(),
     phone: String(form.get("phone")).trim(),
-    emergencyContact: "",
-    emergencyPhone: "",
+    emergencyContact: String(form.get("emergencyContact")).trim(),
+    emergencyPhone: String(form.get("emergencyPhone")).trim(),
     careLevel: String(form.get("careLevel")),
     mobility: String(form.get("mobility")),
     pickupAddress: String(form.get("pickupAddress")).trim(),
     destinationAddress: String(form.get("destinationAddress")).trim(),
     note: String(form.get("note")).trim(),
-    active: true,
+    active: existingCase?.active ?? true,
   };
 
   if (dataMode === "supabase") {
     try {
-      await apiAction("create_case", {
+      await apiAction(editingId ? "update_case" : "create_case", {
         case: newCase,
         trip: form.get("createTrip")
           ? {
@@ -894,11 +1025,20 @@ async function handleCaseSubmit(event) {
             }
           : null,
       });
+      editingCaseId = "";
       renderCases();
     } catch (error) {
       dataMessage = `新增失敗：${error.message}`;
       renderCases();
     }
+    return;
+  }
+
+  if (editingId) {
+    state.cases = state.cases.map((person) => (person.id === editingId ? newCase : person));
+    editingCaseId = "";
+    saveState();
+    renderCases();
     return;
   }
 
@@ -934,6 +1074,16 @@ async function handleCaseAction(event) {
   const person = state.cases.find((item) => item.id === button.dataset.caseId);
   if (!person) return;
 
+  if (button.dataset.action === "edit") {
+    editingCaseId = person.id;
+    renderCases();
+    return;
+  }
+
+  if (button.dataset.action === "delete" && !window.confirm(`確定刪除 ${person.name}？相關今日班表也會移除。`)) {
+    return;
+  }
+
   if (dataMode === "supabase") {
     try {
       if (button.dataset.action === "toggle") {
@@ -946,6 +1096,11 @@ async function handleCaseAction(event) {
           driverId: state.drivers[0]?.id ?? "",
         });
       }
+
+      if (button.dataset.action === "delete") {
+        await apiAction("delete_case", { caseId: person.id });
+      }
+      editingCaseId = "";
       renderCases();
     } catch (error) {
       dataMessage = `更新失敗：${error.message}`;
@@ -977,8 +1132,164 @@ async function handleCaseAction(event) {
     });
   }
 
+  if (button.dataset.action === "delete") {
+    state.trips = state.trips.filter((trip) => trip.caseId !== person.id);
+    state.cases = state.cases.filter((item) => item.id !== person.id);
+    editingCaseId = "";
+  }
+
   saveState();
   renderCases();
+}
+
+function renderDrivers() {
+  const host = document.getElementById("appView");
+  host.replaceChildren(document.getElementById("driversTemplate").content.cloneNode(true));
+
+  document.getElementById("driverCount").textContent = `${state.drivers.length} 位司機`;
+  document.getElementById("driverList").innerHTML = state.drivers.map(renderDriverManageCard).join("");
+  document.getElementById("driverForm").addEventListener("submit", handleDriverSubmit);
+  document.getElementById("driverCancelBtn").addEventListener("click", () => {
+    editingDriverId = "";
+    renderDrivers();
+  });
+  document.getElementById("driverList").addEventListener("click", handleDriverManageAction);
+  if (editingDriverId) fillDriverForm(editingDriverId);
+}
+
+function renderDriverManageCard(driver) {
+  const activeText = driver.active ? "服務中" : "已停用";
+  const activeClass = driver.active ? "completed" : "scheduled";
+
+  return `
+    <article class="case-card">
+      <div>
+        <strong>${escapeHTML(driver.name)}</strong>
+        <p class="subtext">${escapeHTML(driver.routeLabel)} · ${escapeHTML(driver.vehicleNo)}</p>
+        <p class="subtext">${escapeHTML(driver.phone || "未填電話")}</p>
+        <span class="status-pill ${activeClass}">${activeText}</span>
+      </div>
+      <div>
+        <p class="subtext">快速登入 PIN：${escapeHTML(driver.pin || "未設定")}</p>
+        <p class="subtext">最新定位：${escapeHTML(formatCoordinate(state.driverLocations[driver.id]))}</p>
+        <p class="subtext">更新時間：${escapeHTML(formatEventTime(state.driverLocations[driver.id]?.updatedAt))}</p>
+      </div>
+      <div class="task-actions">
+        <button class="primary-btn" type="button" data-action="edit" data-driver-id="${escapeHTML(driver.id)}">編輯</button>
+        <button class="ghost-btn" type="button" data-action="toggle" data-driver-id="${escapeHTML(driver.id)}">
+          ${driver.active ? "停用司機" : "恢復服務"}
+        </button>
+        <button class="danger-btn" type="button" data-action="delete" data-driver-id="${escapeHTML(driver.id)}">刪除</button>
+      </div>
+    </article>
+  `;
+}
+
+function fillDriverForm(driverId) {
+  const driver = getDriver(driverId);
+  const form = document.getElementById("driverForm");
+  if (!driver || !form) return;
+
+  form.elements.id.value = driver.id;
+  form.elements.name.value = driver.name;
+  form.elements.phone.value = driver.phone || "";
+  form.elements.vehicleNo.value = driver.vehicleNo;
+  form.elements.routeLabel.value = driver.routeLabel;
+  form.elements.pin.value = driver.pin || "";
+  form.elements.active.value = String(Boolean(driver.active));
+  document.getElementById("driverFormMode").textContent = "編輯司機";
+  document.getElementById("driverSubmitBtn").textContent = "儲存司機";
+}
+
+async function handleDriverSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const editingId = String(form.get("id") || "").trim();
+  const driver = {
+    id: editingId || uid("drv"),
+    name: String(form.get("name")).trim(),
+    phone: String(form.get("phone")).trim(),
+    vehicleNo: String(form.get("vehicleNo")).trim(),
+    routeLabel: String(form.get("routeLabel")).trim(),
+    pin: String(form.get("pin")).trim(),
+    active: String(form.get("active")) === "true",
+  };
+
+  if (dataMode === "supabase") {
+    try {
+      await apiAction(editingId ? "update_driver" : "create_driver", { driver });
+      editingDriverId = "";
+      renderDrivers();
+    } catch (error) {
+      dataMessage = `司機資料儲存失敗：${error.message}`;
+      renderDrivers();
+    }
+    return;
+  }
+
+  if (editingId) {
+    state.drivers = state.drivers.map((item) => (item.id === editingId ? { ...item, ...driver } : item));
+  } else {
+    state.drivers.push({ ...driver, homeLocation: fallbackLocation(driver.id) });
+    state.driverLocations[driver.id] = {
+      ...fallbackLocation(driver.id),
+      accuracy: 80,
+      source: "demo",
+      updatedAt: new Date().toISOString(),
+      eventType: "heartbeat",
+      tripId: "",
+    };
+  }
+  editingDriverId = "";
+  saveState();
+  renderDrivers();
+}
+
+async function handleDriverManageAction(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+
+  const driver = state.drivers.find((item) => item.id === button.dataset.driverId);
+  if (!driver) return;
+
+  if (button.dataset.action === "edit") {
+    editingDriverId = driver.id;
+    renderDrivers();
+    return;
+  }
+
+  if (button.dataset.action === "delete" && !window.confirm(`確定刪除 ${driver.name}？已有歷史班表時系統會改為停用。`)) {
+    return;
+  }
+
+  if (dataMode === "supabase") {
+    try {
+      if (button.dataset.action === "toggle") {
+        await apiAction("toggle_driver", { driverId: driver.id, active: !driver.active });
+      }
+      if (button.dataset.action === "delete") {
+        await apiAction("delete_driver", { driverId: driver.id });
+      }
+      editingDriverId = "";
+      renderDrivers();
+    } catch (error) {
+      dataMessage = `司機資料更新失敗：${error.message}`;
+      renderDrivers();
+    }
+    return;
+  }
+
+  if (button.dataset.action === "toggle") {
+    driver.active = !driver.active;
+  }
+  if (button.dataset.action === "delete") {
+    state.trips = state.trips.filter((trip) => trip.driverId !== driver.id);
+    delete state.driverLocations[driver.id];
+    state.drivers = state.drivers.filter((item) => item.id !== driver.id);
+  }
+  editingDriverId = "";
+  saveState();
+  renderDrivers();
 }
 
 function renderDriver() {
@@ -1004,7 +1315,7 @@ function renderDriverLogin() {
         </div>
       </div>
       <div class="driver-login-grid">
-        ${state.drivers.map(renderDriverLoginCard).join("")}
+        ${state.drivers.filter((driver) => driver.active).map(renderDriverLoginCard).join("")}
       </div>
     </section>
     <section class="work-section pin-panel">
@@ -1272,16 +1583,18 @@ function renderSettings() {
   const host = document.getElementById("appView");
   host.replaceChildren(document.getElementById("settingsTemplate").content.cloneNode(true));
 
-  document.getElementById("driverPinList").innerHTML = state.drivers
-    .map((driver) => {
+  document.getElementById("releaseList").innerHTML = releaseNotes
+    .map((release) => {
       return `
-        <div class="pin-item">
+        <article class="release-item">
           <div>
-            <strong>${escapeHTML(driver.name)}</strong>
-            <p class="subtext">${escapeHTML(driver.routeLabel)} · ${escapeHTML(driver.vehicleNo)}</p>
+            <strong>${escapeHTML(release.version)}</strong>
+            <p class="subtext">${escapeHTML(release.date)}</p>
           </div>
-          <code>${escapeHTML(driver.pin)}</code>
-        </div>
+          <ul>
+            ${release.items.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}
+          </ul>
+        </article>
       `;
     })
     .join("");
@@ -1304,6 +1617,12 @@ async function init() {
       activeView = button.dataset.view;
       render();
     });
+  });
+
+  document.getElementById("sidebarToggle").addEventListener("click", () => {
+    sidebarCollapsed = !sidebarCollapsed;
+    localStorage.setItem("ltc-sidebar-collapsed", String(sidebarCollapsed));
+    render();
   });
 
   document.getElementById("resetDemoBtn").addEventListener("click", async () => {

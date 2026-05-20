@@ -49,6 +49,11 @@ button {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100vh;
+  transition: grid-template-columns 0.18s ease;
+}
+
+.sidebar-collapsed .app-shell {
+  grid-template-columns: 86px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -59,12 +64,27 @@ button {
   background: linear-gradient(180deg, #102a38 0%, #173f45 100%);
   border-right: 1px solid rgba(255, 255, 255, 0.12);
   color: white;
+  transition:
+    padding 0.18s ease,
+    gap 0.18s ease;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
+}
+
+.brand-text {
+  min-width: 0;
 }
 
 .brand-mark {
@@ -95,6 +115,20 @@ button {
   color: rgba(255, 255, 255, 0.68);
 }
 
+.sidebar-toggle {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
 .eyebrow,
 .muted-label {
   margin: 0 0 4px;
@@ -122,6 +156,10 @@ button {
   text-align: left;
 }
 
+.nav-item b {
+  font-weight: 800;
+}
+
 .nav-item:hover,
 .nav-item.active {
   color: white;
@@ -135,6 +173,36 @@ button {
   background: rgba(255, 255, 255, 0.09);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
+}
+
+.sidebar-collapsed .sidebar {
+  gap: 18px;
+  padding: 18px 14px;
+}
+
+.sidebar-collapsed .sidebar-head,
+.sidebar-collapsed .brand {
+  justify-content: center;
+}
+
+.sidebar-collapsed .brand-text,
+.sidebar-collapsed .today-panel,
+.sidebar-collapsed .nav-item b {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-toggle {
+  position: absolute;
+  top: 70px;
+  left: 52px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+
+.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding: 14px 8px;
 }
 
 .today-panel strong {
@@ -351,7 +419,7 @@ button {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -457,6 +525,54 @@ button {
     linear-gradient(rgba(49, 67, 79, 0.09) 1px, transparent 1px),
     linear-gradient(90deg, rgba(49, 67, 79, 0.09) 1px, transparent 1px);
   background-size: 56px 56px;
+}
+
+.map-routes {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.route-line {
+  fill: none;
+  stroke: rgba(39, 100, 165, 0.68);
+  stroke-width: 0.8;
+  stroke-dasharray: 2.2 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.route-line.active {
+  stroke: rgba(22, 128, 82, 0.86);
+  stroke-width: 1.1;
+  stroke-dasharray: 0;
+}
+
+.route-line.late {
+  stroke: rgba(190, 63, 54, 0.88);
+}
+
+.route-dot {
+  fill: white;
+  stroke: rgba(23, 33, 43, 0.34);
+  stroke-width: 0.35;
+  vector-effect: non-scaling-stroke;
+}
+
+.route-dot.end {
+  fill: #f3c969;
+}
+
+.route-label {
+  fill: rgba(23, 33, 43, 0.72);
+  font-size: 3px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
 }
 
 .map-road {
@@ -776,6 +892,17 @@ textarea {
   min-height: 18px;
 }
 
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.form-actions button {
+  flex: 1 1 140px;
+}
+
 .driver-view {
   display: grid;
   gap: 16px;
@@ -970,6 +1097,35 @@ textarea {
 .driver-pin-list {
   display: grid;
   gap: 10px;
+}
+
+.release-list {
+  display: grid;
+  gap: 12px;
+}
+
+.release-item {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px;
+  background: #fbfcfb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.release-item strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--brand-dark);
+  font-size: 18px;
+}
+
+.release-item ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #3d4b55;
+  line-height: 1.7;
 }
 
 .pin-item {
