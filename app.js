@@ -32,6 +32,11 @@ const eventLabels = {
 
 const releaseNotes = [
   {
+    version: "v0.7.0",
+    date: "2026-05-21",
+    items: ["新增主入口首頁，承辦人與司機依身分進入系統", "承辦人新增登出功能", "個案卡片新增 Google 地圖路徑按鈕並優化狀態顯示位置"],
+  },
+  {
     version: "v0.6.5",
     date: "2026-05-21",
     items: ["手機版新增下拉重新整理", "承辦人入口移至側邊導覽第一項", "個案管理與司機管理整合進承辦人入口"],
@@ -105,7 +110,7 @@ const taipeiBounds = {
   maxLng: 121.60,
 };
 
-let activeView = "dashboard";
+let activeView = "home";
 let activeDriverId = "";
 let selectedLoginDriverId = "";
 let pinInput = "";
@@ -647,6 +652,7 @@ function filteredTrips() {
 function render() {
   applyFontScale();
   applySidebarState();
+  document.body.classList.toggle("coordinator-unlocked", coordinatorUnlocked);
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === activeView);
   });
@@ -657,6 +663,7 @@ function render() {
   document.body.dataset.view = visibleView;
   updateConnectionState();
 
+  if (visibleView === "home") renderHome();
   if (visibleView === "coordinatorGate") renderCoordinatorGate();
   if (visibleView === "dashboard") renderDashboard();
   if (visibleView === "cases") renderCases();
@@ -702,6 +709,28 @@ function applySidebarState() {
   if (!toggle) return;
   toggle.textContent = sidebarCollapsed ? "›" : "‹";
   toggle.setAttribute("aria-label", sidebarCollapsed ? "展開側邊選單" : "收合側邊選單");
+}
+
+function renderHome() {
+  const host = document.getElementById("appView");
+  host.replaceChildren(document.getElementById("homeTemplate").content.cloneNode(true));
+
+  document.getElementById("openCoordinatorEntryBtn").addEventListener("click", () => {
+    requestView("dashboard");
+  });
+  document.getElementById("openDriverEntryBtn").addEventListener("click", () => {
+    requestView("driver");
+  });
+}
+
+function logoutCoordinator() {
+  coordinatorUnlocked = false;
+  coordinatorPasscode = "";
+  pendingProtectedView = "";
+  sessionStorage.removeItem(COORDINATOR_SESSION_KEY);
+  sessionStorage.removeItem(COORDINATOR_PASSCODE_KEY);
+  activeView = "home";
+  render();
 }
 
 function renderCoordinatorGate() {
@@ -1128,6 +1157,16 @@ function googleMapsRouteUrl(trip) {
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
+function googleMapsCaseRouteUrl(person) {
+  const params = new URLSearchParams({
+    api: "1",
+    travelmode: "driving",
+  });
+  params.set("origin", person.pickupAddress || "");
+  params.set("destination", person.destinationAddress || person.pickupAddress || "");
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 function renderCases(host = document.getElementById("appView")) {
   host.replaceChildren(document.getElementById("casesTemplate").content.cloneNode(true));
 
@@ -1171,6 +1210,7 @@ function renderCaseCard(person) {
   const activeClass = person.active ? "completed" : "scheduled";
   const hasTodayTrip = state.trips.some((trip) => trip.caseId === person.id && trip.serviceDate === state.serviceDate);
   const isSelected = selectedCaseId === person.id;
+  const routeUrl = googleMapsCaseRouteUrl(person);
   const actions = isSelected
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(person.name)} 操作選項">
@@ -1201,17 +1241,29 @@ function renderCaseCard(person) {
   return `
     <article class="case-card ${isSelected ? "selected" : ""}" data-case-id="${escapeHTML(person.id)}" tabindex="0">
       <div>
-        <strong>${escapeHTML(person.name)}</strong>
+        <div class="case-title-row">
+          <strong>${escapeHTML(person.name)}</strong>
+          <span class="status-pill ${activeClass}">${activeText}</span>
+        </div>
         <p class="subtext">${escapeHTML(person.caseNo)} · ${escapeHTML(person.gender || "未填性別")} · ${escapeHTML(person.careLevel)}</p>
         <p class="subtext">${escapeHTML(person.phone)}</p>
-        <span class="status-pill ${activeClass}">${activeText}</span>
       </div>
       <div>
         <p class="subtext">個管員：${escapeHTML(person.careManager || "未填")} ${person.careManagerPhone ? `· ${escapeHTML(person.careManagerPhone)}` : ""}</p>
         <p class="subtext">服務區域：${escapeHTML(person.serviceArea || "未填")} · 輔具：${escapeHTML(person.assistiveDevice || "未填")}</p>
         <p class="subtext">緊急聯絡：${escapeHTML(person.emergencyContact || "未填")} ${person.emergencyRelation ? `(${escapeHTML(person.emergencyRelation)})` : ""}</p>
-        <p class="subtext">上車：${escapeHTML(person.pickupAddress)}</p>
-        <p class="subtext">目的地：${escapeHTML(person.destinationAddress)}</p>
+        <p class="subtext case-address-line">
+          <span>上車：${escapeHTML(person.pickupAddress)}</span>
+          <a class="inline-map-btn" href="${escapeHTML(routeUrl)}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(person.name)} 接送路徑">
+            <span class="material-symbols-outlined" aria-hidden="true">map</span>
+          </a>
+        </p>
+        <p class="subtext case-address-line">
+          <span>目的地：${escapeHTML(person.destinationAddress)}</span>
+          <a class="inline-map-btn" href="${escapeHTML(routeUrl)}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(person.name)} 接送路徑">
+            <span class="material-symbols-outlined" aria-hidden="true">map</span>
+          </a>
+        </p>
         <p class="subtext">行動：${escapeHTML(person.mobility)}</p>
         <p class="subtext">接送注意：${escapeHTML(person.rideNote || person.note || "無")}</p>
       </div>
@@ -1348,6 +1400,7 @@ async function handleCaseSubmit(event) {
 }
 
 async function handleCaseAction(event) {
+  if (event.target.closest("a")) return;
   const button = event.target.closest("button[data-action]");
   if (!button) {
     const card = event.target.closest(".case-card[data-case-id]");
@@ -2161,6 +2214,8 @@ async function init() {
       requestView(button.dataset.topbarView);
     });
   });
+
+  document.getElementById("coordinatorLogoutBtn").addEventListener("click", logoutCoordinator);
 
   const globalSearchInput = document.getElementById("globalSearchInput");
   if (globalSearchInput) {

@@ -28,8 +28,12 @@
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item active" data-view="dashboard" aria-label="返回首頁，承辦人入口">
+          <button class="nav-item active" data-view="home" aria-label="主入口">
             <span class="material-symbols-outlined" aria-hidden="true">home</span>
+            <b>主入口</b>
+          </button>
+          <button class="nav-item" data-view="dashboard" aria-label="承辦人入口">
+            <span class="material-symbols-outlined" aria-hidden="true">dashboard</span>
             <b>承辦人入口</b>
           </button>
           <button class="nav-item" data-view="driver" aria-label="司機入口">
@@ -84,11 +88,53 @@
             </span>
             <span class="topbar-clock" id="topbarClock">--:--</span>
             <span class="topbar-avatar" aria-hidden="true">LC</span>
+            <button class="topbar-logout" id="coordinatorLogoutBtn" type="button">
+              <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+              登出
+            </button>
           </div>
         </header>
         <section id="appView" class="view-host" aria-live="polite"></section>
       </main>
     </div>
+
+    <template id="homeTemplate">
+      <section class="entry-shell">
+        <div class="entry-hero work-section">
+          <p class="eyebrow">長照社區交通</p>
+          <h2>每日接送系統</h2>
+          <p class="subtext">請依照使用身分進入工作區。承辦人可查看調度、個案與司機資料；司機可快速登入並完成接送打卡。</p>
+        </div>
+
+        <div class="entry-grid">
+          <article class="entry-card coordinator">
+            <span class="entry-icon material-symbols-outlined" aria-hidden="true">admin_panel_settings</span>
+            <div>
+              <p class="eyebrow">承辦人</p>
+              <h3>進入承辦人入口</h3>
+              <p class="subtext">查看今日調度、司機位置、個案管理與司機管理。</p>
+            </div>
+            <button class="primary-btn" id="openCoordinatorEntryBtn" type="button">
+              <span class="material-symbols-outlined" aria-hidden="true">login</span>
+              承辦人登入
+            </button>
+          </article>
+
+          <article class="entry-card driver">
+            <span class="entry-icon material-symbols-outlined" aria-hidden="true">route</span>
+            <div>
+              <p class="eyebrow">司機</p>
+              <h3>進入司機入口</h3>
+              <p class="subtext">選擇司機、輸入 PIN，接到與送達只需按一下。</p>
+            </div>
+            <button class="secondary-btn" id="openDriverEntryBtn" type="button">
+              <span class="material-symbols-outlined" aria-hidden="true">directions_car</span>
+              司機登入
+            </button>
+          </article>
+        </div>
+      </section>
+    </template>
 
     <template id="dashboardTemplate">
       <section class="dispatch-shell">
