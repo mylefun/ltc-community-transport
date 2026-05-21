@@ -17,16 +17,6 @@ const coordinatorActions = new Set([
   "create_trip",
 ]);
 
-const viewTitles = {
-  dashboard: "承辦人入口",
-  cases: "個案資料",
-  drivers: "司機管理",
-  driver: "司機入口",
-  settings: "設定",
-  releases: "版本更新紀錄",
-  coordinatorGate: "承辦人登入",
-};
-
 const statusLabels = {
   scheduled: "待接",
   picked_up: "接送中",
@@ -658,7 +648,6 @@ function render() {
   });
   const visibleView = protectedViews.has(activeView) && !coordinatorUnlocked ? "coordinatorGate" : activeView;
   document.body.dataset.view = visibleView;
-  document.getElementById("viewTitle").textContent = viewTitles[visibleView];
   updateConnectionState();
 
   if (visibleView === "coordinatorGate") renderCoordinatorGate();

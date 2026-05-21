@@ -155,14 +155,9 @@ button {
 }
 
 .brand h1,
-.topbar h2,
 .section-heading h3 {
   margin: 0;
   line-height: 1.2;
-}
-
-.topbar h2 {
-  font-size: calc(28px * var(--user-font-scale));
 }
 
 .section-heading h3 {
@@ -322,28 +317,6 @@ button {
 .main-area {
   min-width: 0;
   padding: 28px 32px;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 22px;
-}
-
-.home-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  padding: 10px 14px;
-  color: var(--brand-dark);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-weight: 800;
-  box-shadow: var(--shadow-soft);
 }
 
 .ghost-btn,
@@ -1336,18 +1309,6 @@ body[data-view="driver"] .main-area {
   padding: 18px 14px 28px;
 }
 
-body[data-view="driver"] .topbar {
-  margin-bottom: 14px;
-}
-
-body[data-view="driver"] .topbar .eyebrow {
-  display: none;
-}
-
-body[data-view="driver"] .topbar h2 {
-  font-size: calc(24px * var(--user-font-scale));
-}
-
 body[data-view="driver"] .work-section,
 body[data-view="driver"] .driver-header,
 body[data-view="driver"] .driver-task {
@@ -1574,15 +1535,10 @@ body[data-view="driver"] .task-actions button {
     padding: 16px;
   }
 
-  .topbar,
   .section-heading,
   .driver-header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .home-btn {
-    width: 100%;
   }
 
   .summary-grid,
