@@ -124,7 +124,6 @@ let filters = {
   driver: "all",
   status: "all",
 };
-let globalSearch = "";
 let sidebarCollapsed = localStorage.getItem("ltc-sidebar-collapsed") === "true";
 let editingCaseId = "";
 let selectedCaseId = "";
@@ -680,25 +679,14 @@ function render() {
   if (visibleView === "settings") renderSettings();
   if (visibleView === "releases") renderReleases();
   renderFlash();
-  applyGlobalSearch();
-}
-
-function applyGlobalSearch() {
-  const query = globalSearch.trim().toLowerCase();
-  document.querySelectorAll(".ride-row, .case-card, .driver-card").forEach((item) => {
-    const text = item.textContent.toLowerCase();
-    item.classList.toggle("is-search-hidden", Boolean(query) && !text.includes(query));
-  });
 }
 
 function refreshCases() {
   renderCases();
-  applyGlobalSearch();
 }
 
 function refreshDrivers() {
   renderDrivers();
-  applyGlobalSearch();
 }
 
 function setFlash(message, tone = "success", scope = "global") {
@@ -2288,14 +2276,6 @@ async function init() {
   });
 
   document.getElementById("coordinatorLogoutBtn").addEventListener("click", logoutCoordinator);
-
-  const globalSearchInput = document.getElementById("globalSearchInput");
-  if (globalSearchInput) {
-    globalSearchInput.addEventListener("input", (event) => {
-      globalSearch = event.target.value;
-      applyGlobalSearch();
-    });
-  }
 
   setupPullToRefresh();
   updateClock();

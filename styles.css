@@ -404,7 +404,6 @@ body.refreshing .main-area {
 .topbar-brand,
 .topbar-actions,
 .live-chip,
-.topbar-search,
 .topbar-management,
 .topbar-management-btn {
   display: flex;
@@ -496,31 +495,6 @@ body[data-view="home"] .view-host {
   min-height: 100vh;
   padding: clamp(20px, 5vw, 56px);
   place-items: center;
-}
-
-.topbar-search {
-  gap: 8px;
-  min-height: 46px;
-  padding: 0 16px;
-  background: var(--surface-container);
-  border: 1px solid rgba(189, 201, 200, 0.72);
-  border-radius: 999px;
-}
-
-.topbar-search .material-symbols-outlined {
-  color: var(--muted);
-}
-
-.topbar-search input {
-  min-height: auto;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-}
-
-.topbar-search input:focus {
-  outline: 0;
 }
 
 .topbar-actions {
@@ -647,10 +621,6 @@ body[data-view="home"] .view-host {
   max-width: 1500px;
   width: 100%;
   padding: 30px;
-}
-
-.is-search-hidden {
-  display: none !important;
 }
 
 .entry-shell {
@@ -1822,7 +1792,6 @@ body[data-view="driver"] .app-topbar {
   border-inline: 1px solid rgba(189, 201, 200, 0.58);
 }
 
-body[data-view="driver"] .topbar-search,
 body[data-view="driver"] .topbar-management,
 body[data-view="driver"] .topbar-logout,
 body[data-view="driver"] .live-chip {
@@ -2056,10 +2025,6 @@ body[data-view="driver"] .task-actions button {
     grid-row: 1;
   }
 
-  .topbar-search {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
 }
 
 @media (max-width: 1180px) {
@@ -2180,8 +2145,7 @@ body[data-view="driver"] .task-actions button {
   }
 
   .topbar-brand,
-  .topbar-actions,
-  .topbar-search {
+  .topbar-actions {
     grid-column: 1;
     grid-row: auto;
   }
@@ -2199,10 +2163,6 @@ body[data-view="driver"] .task-actions button {
 
   .topbar-management-btn {
     flex: 1;
-  }
-
-  .topbar-search {
-    order: 3;
   }
 
   .topbar-actions {
@@ -2244,10 +2204,6 @@ body[data-view="driver"] .task-actions button {
 @media (max-width: 520px) {
   .topbar-brand strong {
     font-size: 18px;
-  }
-
-  .topbar-search {
-    min-height: 42px;
   }
 
   .filter-row,
