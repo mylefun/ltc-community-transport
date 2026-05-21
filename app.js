@@ -754,9 +754,6 @@ function renderDashboard() {
     summaryCard("已完成", stats.completed, "完成送達", "done"),
     summaryCard("可能延遲", stats.late, "逾預定 10 分鐘", "alert"),
   ].join("");
-  document.getElementById("heroStatusText").textContent = stats.late
-    ? `${stats.late} 筆需追蹤`
-    : `${stats.picked_up} 車接送中`;
 
   document.getElementById("mapDriverCount").textContent = `${state.drivers.length} 位司機`;
   document.getElementById("liveMap").innerHTML = renderDriverMap();

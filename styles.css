@@ -456,52 +456,6 @@ button {
   box-shadow: var(--shadow);
 }
 
-.ops-hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 20px;
-  min-height: 108px;
-  background:
-    linear-gradient(135deg, rgba(28, 47, 63, 0.96), rgba(15, 118, 110, 0.92)),
-    #1c2f3f;
-  color: white;
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-}
-
-.ops-hero .eyebrow {
-  color: rgba(255, 255, 255, 0.72);
-}
-
-.ops-hero h3 {
-  margin: 0;
-  max-width: 760px;
-  font-size: 24px;
-  line-height: 1.35;
-}
-
-.hero-metrics {
-  display: grid;
-  gap: 6px;
-  min-width: 150px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-}
-
-.hero-metrics span {
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.hero-metrics strong {
-  font-size: 22px;
-}
-
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
