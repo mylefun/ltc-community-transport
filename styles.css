@@ -1971,6 +1971,27 @@ body[data-view="driver"] .task-actions button {
   border-radius: 16px;
 }
 
+@media (max-width: 1500px) {
+  .app-topbar {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .topbar-brand {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .topbar-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .topbar-search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 @media (max-width: 1180px) {
   .summary-grid {
     margin-inline: -2px;
@@ -2025,6 +2046,13 @@ body[data-view="driver"] .task-actions button {
     grid-template-columns: 1fr;
     gap: 12px;
     padding: 14px 16px;
+  }
+
+  .topbar-brand,
+  .topbar-actions,
+  .topbar-search {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .topbar-brand {
