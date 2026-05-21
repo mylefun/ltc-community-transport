@@ -62,6 +62,16 @@
           <div class="topbar-brand">
             <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
             <strong>社區交通車調度中心</strong>
+            <div class="topbar-management" role="group" aria-label="承辦管理入口">
+              <button class="topbar-management-btn" type="button" data-topbar-view="cases">
+                <span class="material-symbols-outlined" aria-hidden="true">accessible_forward</span>
+                個案管理
+              </button>
+              <button class="topbar-management-btn" type="button" data-topbar-view="drivers">
+                <span class="material-symbols-outlined" aria-hidden="true">airport_shuttle</span>
+                司機管理
+              </button>
+            </div>
           </div>
           <label class="topbar-search">
             <span class="material-symbols-outlined" aria-hidden="true">search</span>
@@ -134,25 +144,6 @@
         </aside>
       </section>
 
-      <section class="management-shell work-section">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">承辦管理</p>
-            <h3>個案與司機管理</h3>
-          </div>
-          <div class="management-tabs" role="tablist" aria-label="承辦管理切換">
-            <button class="tab-btn active" type="button" data-management-tab="cases">
-              <span class="material-symbols-outlined" aria-hidden="true">accessible_forward</span>
-              個案管理
-            </button>
-            <button class="tab-btn" type="button" data-management-tab="drivers">
-              <span class="material-symbols-outlined" aria-hidden="true">airport_shuttle</span>
-              司機管理
-            </button>
-          </div>
-        </div>
-        <div id="managementView"></div>
-      </section>
     </template>
 
     <template id="casesTemplate">

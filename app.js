@@ -114,7 +114,6 @@ let filters = {
   driver: "all",
   status: "all",
 };
-let managementTab = "cases";
 let globalSearch = "";
 let sidebarCollapsed = localStorage.getItem("ltc-sidebar-collapsed") === "true";
 let editingCaseId = "";
@@ -651,6 +650,9 @@ function render() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === activeView);
   });
+  document.querySelectorAll(".topbar-management-btn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.topbarView === activeView);
+  });
   const visibleView = protectedViews.has(activeView) && !coordinatorUnlocked ? "coordinatorGate" : activeView;
   document.body.dataset.view = visibleView;
   updateConnectionState();
@@ -674,18 +676,10 @@ function applyGlobalSearch() {
 }
 
 function refreshCases() {
-  if (activeView === "dashboard") {
-    renderDashboard();
-    return;
-  }
   renderCases();
 }
 
 function refreshDrivers() {
-  if (activeView === "dashboard") {
-    renderDashboard();
-    return;
-  }
   renderDrivers();
 }
 
@@ -807,26 +801,6 @@ function renderDashboard() {
     renderDashboard();
   });
 
-  setupManagementHub();
-}
-
-function setupManagementHub() {
-  const tabs = document.querySelectorAll("[data-management-tab]");
-  tabs.forEach((button) => {
-    button.classList.toggle("active", button.dataset.managementTab === managementTab);
-    button.addEventListener("click", () => {
-      managementTab = button.dataset.managementTab;
-      renderDashboard();
-    });
-  });
-
-  const view = document.getElementById("managementView");
-  if (!view) return;
-  if (managementTab === "drivers") {
-    renderDrivers(view);
-    return;
-  }
-  renderCases(view);
 }
 
 function renderDriverMap() {
@@ -2180,6 +2154,12 @@ async function init() {
     sidebarCollapsed = !sidebarCollapsed;
     localStorage.setItem("ltc-sidebar-collapsed", String(sidebarCollapsed));
     render();
+  });
+
+  document.querySelectorAll("[data-topbar-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      requestView(button.dataset.topbarView);
+    });
   });
 
   const globalSearchInput = document.getElementById("globalSearchInput");

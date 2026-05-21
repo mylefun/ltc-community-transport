@@ -388,7 +388,7 @@ button {
   top: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: max-content minmax(260px, 520px) max-content;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 500px) max-content;
   align-items: center;
   gap: 20px;
   min-height: 72px;
@@ -401,20 +401,62 @@ button {
 .topbar-brand,
 .topbar-actions,
 .live-chip,
-.topbar-search {
+.topbar-search,
+.topbar-management,
+.topbar-management-btn {
   display: flex;
   align-items: center;
 }
 
 .topbar-brand {
   gap: 12px;
+  min-width: 0;
   color: var(--brand);
   font-size: 22px;
   font-weight: 900;
+  flex-wrap: wrap;
 }
 
-.topbar-brand .material-symbols-outlined {
+.topbar-brand > .material-symbols-outlined {
   font-size: 30px;
+}
+
+.topbar-brand strong {
+  white-space: nowrap;
+}
+
+.topbar-management {
+  gap: 6px;
+  margin-left: 6px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid rgba(189, 201, 200, 0.72);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar-management-btn {
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.topbar-management-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.topbar-management-btn.active {
+  color: white;
+  background: var(--brand);
+  box-shadow: 0 8px 18px rgba(0, 90, 90, 0.2);
 }
 
 .topbar-search {
@@ -1046,48 +1088,6 @@ button {
   gap: 10px;
 }
 
-.management-shell {
-  display: grid;
-  gap: 16px;
-}
-
-.management-shell .section-heading {
-  align-items: center;
-}
-
-.management-tabs {
-  display: inline-flex;
-  gap: 8px;
-  padding: 6px;
-  background: var(--surface-container);
-  border: 1px solid rgba(189, 201, 200, 0.7);
-  border-radius: 999px;
-}
-
-.tab-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 40px;
-  padding: 8px 14px;
-  color: var(--muted);
-  background: transparent;
-  border: 0;
-  border-radius: 999px;
-  font-weight: 900;
-}
-
-.tab-btn .material-symbols-outlined {
-  font-size: 20px;
-}
-
-.tab-btn.active {
-  color: white;
-  background: var(--brand);
-  box-shadow: 0 8px 18px rgba(0, 90, 90, 0.2);
-}
-
 .icon-add-btn {
   display: grid;
   place-items: center;
@@ -1608,6 +1608,7 @@ body[data-view="driver"] .app-topbar {
 }
 
 body[data-view="driver"] .topbar-search,
+body[data-view="driver"] .topbar-management,
 body[data-view="driver"] .live-chip {
   display: none;
 }
@@ -1850,7 +1851,17 @@ body[data-view="driver"] .task-actions button {
   }
 
   .topbar-brand {
-    justify-content: space-between;
+    justify-content: flex-start;
+  }
+
+  .topbar-management {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .topbar-management-btn {
+    flex: 1;
   }
 
   .topbar-search {
@@ -1904,14 +1915,6 @@ body[data-view="driver"] .task-actions button {
   .inline-fields {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .management-tabs {
-    justify-content: stretch;
-  }
-
-  .management-tabs .tab-btn {
-    flex: 1;
   }
 
   .summary-card strong {
