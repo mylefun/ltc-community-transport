@@ -474,6 +474,27 @@ body[data-view="home"] .topbar-logout {
   display: none;
 }
 
+body[data-view="home"] .app-shell {
+  display: block;
+  min-height: 100vh;
+}
+
+body[data-view="home"] .sidebar,
+body[data-view="home"] .app-topbar {
+  display: none;
+}
+
+body[data-view="home"] .main-area {
+  min-height: 100vh;
+}
+
+body[data-view="home"] .view-host {
+  max-width: none;
+  min-height: 100vh;
+  padding: clamp(20px, 5vw, 56px);
+  place-items: center;
+}
+
 .topbar-search {
   gap: 8px;
   min-height: 46px;
@@ -632,7 +653,8 @@ body[data-view="home"] .topbar-logout {
 .entry-shell {
   display: grid;
   gap: 22px;
-  min-height: calc(100vh - 132px);
+  width: min(100%, 980px);
+  min-height: calc(100vh - 112px);
   align-content: center;
 }
 
