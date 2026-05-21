@@ -653,36 +653,45 @@ button {
 }
 
 .summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 16px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px;
+  overflow-x: auto;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(189, 201, 200, 0.46);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+  scrollbar-width: thin;
 }
 
 .summary-card {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 14px;
-  min-height: 132px;
-  padding: 18px;
+  gap: 10px;
+  flex: 1 1 0;
+  min-width: 150px;
+  min-height: 74px;
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid rgba(189, 201, 200, 0.54);
-  border-bottom: 5px solid var(--brand);
+  border-left: 4px solid var(--brand);
   border-radius: 16px;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
   position: relative;
   overflow: hidden;
 }
 
 .summary-icon {
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
   place-items: center;
   color: var(--brand);
   background: rgba(0, 90, 90, 0.09);
-  border-radius: 16px;
-  font-size: 29px;
+  border-radius: 12px;
+  font-size: 22px;
 }
 
 .summary-card .eyebrow,
@@ -704,15 +713,21 @@ button {
 }
 
 .summary-card strong {
-  display: block;
-  margin: 6px 0;
+  display: inline-block;
+  margin: 2px 6px 2px 0;
   color: #0b0f12;
-  font-size: 34px;
+  font-size: 27px;
   line-height: 1;
+  vertical-align: middle;
+}
+
+.summary-card .subtext {
+  display: inline;
+  vertical-align: middle;
 }
 
 .summary-card.waiting {
-  border-bottom-color: #f8bd2a;
+  border-left-color: #f8bd2a;
 }
 
 .summary-card.waiting .summary-icon {
@@ -721,7 +736,7 @@ button {
 }
 
 .summary-card.moving {
-  border-bottom-color: var(--blue);
+  border-left-color: var(--blue);
 }
 
 .summary-card.moving .summary-icon {
@@ -730,7 +745,7 @@ button {
 }
 
 .summary-card.done {
-  border-bottom-color: #81d4d4;
+  border-left-color: #81d4d4;
 }
 
 .summary-card.done .summary-icon {
@@ -739,7 +754,7 @@ button {
 }
 
 .summary-card.alert {
-  border-bottom-color: #ea4335;
+  border-left-color: #ea4335;
 }
 
 .summary-card.alert .summary-icon {
@@ -1796,7 +1811,7 @@ body[data-view="driver"] .task-actions button {
 
 @media (max-width: 1180px) {
   .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-inline: -2px;
   }
 
   .dispatch-shell {
@@ -1883,7 +1898,6 @@ body[data-view="driver"] .task-actions button {
     flex-direction: column;
   }
 
-  .summary-grid,
   .split-layout,
   .case-workspace.form-open,
   .dispatch-shell,
@@ -1918,7 +1932,11 @@ body[data-view="driver"] .task-actions button {
   }
 
   .summary-card strong {
-    font-size: 28px;
+    font-size: 24px;
+  }
+
+  .summary-card {
+    flex-basis: 172px;
   }
 
   .task-title-row {
