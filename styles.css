@@ -303,6 +303,20 @@ button {
   margin-bottom: 22px;
 }
 
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 14px;
+  color: var(--brand-dark);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 800;
+  box-shadow: var(--shadow-soft);
+}
+
 .ghost-btn,
 .primary-btn,
 .secondary-btn,
@@ -934,6 +948,25 @@ textarea {
   justify-items: start;
 }
 
+.route-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: #174a61;
+  background: #edf5fb;
+  border: 1px solid #c7ddeb;
+  border-radius: 8px;
+  font-size: 20px;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(23, 33, 43, 0.06);
+}
+
+.route-icon-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
 .split-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
@@ -1118,6 +1151,44 @@ textarea {
   max-width: 420px;
 }
 
+.pin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(16, 42, 56, 0.58);
+  backdrop-filter: blur(6px);
+}
+
+.pin-dialog {
+  position: relative;
+  width: min(100%, 420px);
+  max-width: none;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--ink);
+  background: #edf4f7;
+  border: 1px solid #cfe0e7;
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.pin-message {
+  color: var(--red);
+  font-weight: 900;
+}
+
 .pin-display {
   display: grid;
   place-items: center;
@@ -1273,9 +1344,6 @@ body[data-view="driver"] .driver-card strong {
 
 body[data-view="driver"] .pin-panel {
   max-width: none;
-  position: sticky;
-  bottom: 10px;
-  z-index: 5;
 }
 
 body[data-view="driver"] .pin-display {
@@ -1290,6 +1358,10 @@ body[data-view="driver"] .keypad {
 body[data-view="driver"] .keypad button {
   min-height: 64px;
   font-size: calc(22px * var(--user-font-scale));
+}
+
+body[data-view="driver"] .pin-dialog {
+  width: min(100%, 430px);
 }
 
 body[data-view="driver"] .driver-task {
@@ -1482,6 +1554,10 @@ body[data-view="driver"] .task-actions button {
   .driver-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .home-btn {
+    width: 100%;
   }
 
   .summary-grid,

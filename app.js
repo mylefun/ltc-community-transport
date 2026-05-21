@@ -42,6 +42,11 @@ const eventLabels = {
 
 const releaseNotes = [
   {
+    version: "v0.6.4",
+    date: "2026-05-21",
+    items: ["新增返回首頁按鈕", "司機入口改為點選司機後彈出 PIN 視窗", "今日班表新增 Google Maps 路徑按鈕"],
+  },
+  {
     version: "v0.6.3",
     date: "2026-05-21",
     items: ["依使用情境調整介面：承辦人頁強化桌機工作台密度", "司機入口改為手機優先操作版型與大按鈕"],
@@ -774,6 +779,7 @@ function renderDashboard() {
     saveState();
     renderDashboard();
   });
+
 }
 
 function renderDriverMap() {
@@ -1070,9 +1076,32 @@ function renderRideRow(trip) {
         <p class="subtext">${escapeHTML(driver?.vehicleNo ?? "")}</p>
         <p class="subtext">接到 ${escapeHTML(trip.pickupTime || "--:--")} · 送達 ${escapeHTML(trip.dropoffTime || "--:--")}</p>
         <p class="subtext">定位 ${escapeHTML(formatEventTime(state.driverLocations[trip.driverId]?.updatedAt))}</p>
+        <a class="route-icon-btn" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(driver?.name ?? "司機")} 的 Google 地圖路徑" title="開啟 Google 地圖路徑">
+          🗺️
+        </a>
       </div>
     </article>
   `;
+}
+
+function googleMapsRouteUrl(trip) {
+  const person = getCase(trip.caseId);
+  const location = state.driverLocations[trip.driverId];
+  const params = new URLSearchParams({
+    api: "1",
+    travelmode: "driving",
+  });
+
+  if (location?.lat && location?.lng) {
+    params.set("origin", `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`);
+  }
+
+  if (person?.pickupAddress) {
+    params.set("waypoints", person.pickupAddress);
+  }
+
+  params.set("destination", person?.destinationAddress || trip.destinationAddress || person?.pickupAddress || "");
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
 function renderCases() {
@@ -1659,23 +1688,33 @@ function renderDriverLogin() {
         ${state.drivers.filter((driver) => driver.active).map(renderDriverLoginCard).join("")}
       </div>
     </section>
-    <section class="work-section pin-panel">
-      <div>
-        <p class="eyebrow">PIN</p>
-        <h3>${selectedDriver ? escapeHTML(selectedDriver.name) : "請先選擇司機"}</h3>
-      </div>
-      <div class="pin-display" aria-label="PIN 輸入">${pinInput ? "●".repeat(pinInput.length) : "------"}</div>
-      <div class="keypad">
-        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => `<button type="button" data-key="${digit}">${digit}</button>`).join("")}
-        <button type="button" data-key="clear">清除</button>
-        <button type="button" data-key="0">0</button>
-        <button type="button" data-key="back">退格</button>
-      </div>
-      ${pinMessage ? `<p class="subtext">${escapeHTML(pinMessage)}</p>` : ""}
-    </section>
+    ${selectedDriver ? renderPinDialog(selectedDriver) : ""}
   `;
 
   view.addEventListener("click", handleDriverLoginClick);
+}
+
+function renderPinDialog(driver) {
+  return `
+    <div class="pin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pinDialogTitle">
+      <section class="work-section pin-panel pin-dialog">
+        <button class="modal-close-btn" type="button" data-pin-close aria-label="關閉 PIN 視窗">×</button>
+        <div>
+          <p class="eyebrow">PIN</p>
+          <h3 id="pinDialogTitle">${escapeHTML(driver.name)}</h3>
+          <p class="subtext">請輸入 6 碼快速登入 PIN</p>
+        </div>
+        <div class="pin-display" aria-label="PIN 輸入">${pinInput ? "●".repeat(pinInput.length) : "------"}</div>
+        <div class="keypad">
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => `<button type="button" data-key="${digit}">${digit}</button>`).join("")}
+          <button type="button" data-key="clear">清除</button>
+          <button type="button" data-key="0">0</button>
+          <button type="button" data-key="back">退格</button>
+        </div>
+        ${pinMessage ? `<p class="subtext pin-message">${escapeHTML(pinMessage)}</p>` : ""}
+      </section>
+    </div>
+  `;
 }
 
 function renderDriverLoginCard(driver) {
@@ -1691,12 +1730,31 @@ function renderDriverLoginCard(driver) {
 }
 
 function handleDriverLoginClick(event) {
+  if (event.target.closest("[data-pin-close]")) {
+    selectedLoginDriverId = "";
+    pinInput = "";
+    pinMessage = "";
+    renderDriverLogin();
+    return;
+  }
+
+  if (event.target.classList.contains("pin-modal-backdrop")) {
+    selectedLoginDriverId = "";
+    pinInput = "";
+    pinMessage = "";
+    renderDriverLogin();
+    return;
+  }
+
   const driverButton = event.target.closest("[data-driver-id]");
   if (driverButton) {
     selectedLoginDriverId = driverButton.dataset.driverId;
     pinInput = "";
     pinMessage = "";
     renderDriverLogin();
+    window.setTimeout(() => {
+      document.querySelector(".pin-dialog [data-key]")?.focus();
+    }, 0);
     return;
   }
 
@@ -1986,6 +2044,14 @@ async function init() {
     sidebarCollapsed = !sidebarCollapsed;
     localStorage.setItem("ltc-sidebar-collapsed", String(sidebarCollapsed));
     render();
+  });
+
+  document.getElementById("homeBtn").addEventListener("click", () => {
+    activeDriverId = "";
+    selectedLoginDriverId = "";
+    pinInput = "";
+    pinMessage = "";
+    requestView("dashboard");
   });
 
   updateClock();
