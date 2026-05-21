@@ -1051,6 +1051,10 @@ button {
   gap: 16px;
 }
 
+.management-shell .section-heading {
+  align-items: center;
+}
+
 .management-tabs {
   display: inline-flex;
   gap: 8px;
@@ -1127,9 +1131,14 @@ textarea {
   min-height: 44px;
   padding: 10px 14px;
   color: var(--ink);
+  -webkit-text-fill-color: var(--ink);
   background: var(--surface-strong);
   border: 1px solid rgba(189, 201, 200, 0.78);
   border-radius: 14px;
+}
+
+select option {
+  color: var(--ink);
 }
 
 input:focus,
@@ -1892,10 +1901,17 @@ body[data-view="driver"] .task-actions button {
   }
 
   .filter-row,
-  .inline-fields,
-  .management-tabs {
+  .inline-fields {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .management-tabs {
+    justify-content: stretch;
+  }
+
+  .management-tabs .tab-btn {
+    flex: 1;
   }
 
   .summary-card strong {
