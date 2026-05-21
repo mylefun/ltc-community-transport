@@ -115,10 +115,7 @@ button {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   min-height: 100vh;
-  transform: translateY(var(--pull-distance));
-  transition:
-    grid-template-columns 0.18s ease,
-    transform 0.18s ease;
+  transition: grid-template-columns 0.18s ease;
 }
 
 .sidebar-collapsed .app-shell {
@@ -381,6 +378,12 @@ button {
 .main-area {
   min-width: 0;
   padding: 0;
+  transition: transform 0.18s ease;
+}
+
+body.pulling .main-area,
+body.refreshing .main-area {
+  transform: translateY(var(--pull-distance));
 }
 
 .app-topbar {
