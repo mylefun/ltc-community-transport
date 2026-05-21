@@ -522,8 +522,8 @@ async function handleAction(action, payload = {}) {
 }
 
 async function findDuplicateCase(person, editingId = "") {
-  const filters = [`case_no=eq.${encodeURIComponent(person.caseNo)}`];
-  if (person.identityNo) filters.push(`identity_no=eq.${encodeURIComponent(person.identityNo)}`);
+  const filters = [`case_no.eq.${encodeURIComponent(person.caseNo)}`];
+  if (person.identityNo) filters.push(`identity_no.eq.${encodeURIComponent(person.identityNo)}`);
   if (person.name && person.phone) {
     filters.push(`and(full_name.eq.${encodeURIComponent(person.name)},phone.eq.${encodeURIComponent(person.phone)})`);
   }
@@ -537,8 +537,8 @@ async function findDuplicateCase(person, editingId = "") {
 }
 
 async function findDuplicateDriver(driver, editingId = "") {
-  const filters = [`vehicle_no=eq.${encodeURIComponent(driver.vehicleNo)}`];
-  if (driver.identityNo) filters.push(`identity_no=eq.${encodeURIComponent(driver.identityNo)}`);
+  const filters = [`vehicle_no.eq.${encodeURIComponent(driver.vehicleNo)}`];
+  if (driver.identityNo) filters.push(`identity_no.eq.${encodeURIComponent(driver.identityNo)}`);
   if (driver.name && driver.phone) {
     filters.push(`and(display_name.eq.${encodeURIComponent(driver.name)},phone.eq.${encodeURIComponent(driver.phone)})`);
   }
