@@ -3,7 +3,7 @@ const COORDINATOR_SESSION_KEY = "ltc-coordinator-unlocked";
 const COORDINATOR_PASSCODE_KEY = "ltc-coordinator-passcode";
 const FONT_SCALE_KEY = "ltc-font-scale";
 const COORDINATOR_PASSCODE = "2468";
-const protectedViews = new Set(["dashboard", "cases", "drivers", "settings"]);
+const protectedViews = new Set(["dashboard", "cases", "drivers", "settings", "releases"]);
 const coordinatorActions = new Set([
   "assign_driver",
   "create_case",
@@ -22,7 +22,8 @@ const viewTitles = {
   cases: "個案資料",
   drivers: "司機管理",
   driver: "司機入口",
-  settings: "版本更新紀錄",
+  settings: "設定",
+  releases: "版本更新紀錄",
   coordinatorGate: "承辦人登入",
 };
 
@@ -40,6 +41,11 @@ const eventLabels = {
 };
 
 const releaseNotes = [
+  {
+    version: "v0.6.2",
+    date: "2026-05-21",
+    items: ["修正舊本機資料造成司機入口無法使用 6 碼 PIN 登入", "新增獨立設定頁", "移除重置示範資料按鈕", "將時間移至左側服務日期區塊"],
+  },
   {
     version: "v0.6.1",
     date: "2026-05-20",
@@ -123,7 +129,7 @@ let mapDrag = null;
 let dataMode = "local";
 let dataMessage = "本機示範資料";
 
-let state = loadState();
+let state = normalizeState(loadState());
 state = normalizeState(state);
 saveState();
 
@@ -639,6 +645,7 @@ function render() {
   if (visibleView === "drivers") renderDrivers();
   if (visibleView === "driver") renderDriver();
   if (visibleView === "settings") renderSettings();
+  if (visibleView === "releases") renderReleases();
 }
 
 function applyFontScale() {
@@ -685,8 +692,7 @@ function renderCoordinatorGate() {
   });
 
   document.getElementById("goDriverPortalBtn").addEventListener("click", () => {
-    activeView = "driver";
-    render();
+    requestView("driver");
   });
 }
 
@@ -1929,7 +1935,11 @@ function renderSettings() {
     label.textContent = "100%";
     applyFontScale();
   });
+}
 
+function renderReleases() {
+  const host = document.getElementById("appView");
+  host.replaceChildren(document.getElementById("releasesTemplate").content.cloneNode(true));
   document.getElementById("releaseList").innerHTML = releaseNotes
     .map((release) => {
       return `
@@ -1948,7 +1958,8 @@ function renderSettings() {
 }
 
 function updateClock() {
-  document.getElementById("clock").textContent = localTime();
+  const target = document.getElementById("clock");
+  if (target) target.textContent = localTime();
 }
 
 async function init() {
@@ -1968,28 +1979,6 @@ async function init() {
   document.getElementById("sidebarToggle").addEventListener("click", () => {
     sidebarCollapsed = !sidebarCollapsed;
     localStorage.setItem("ltc-sidebar-collapsed", String(sidebarCollapsed));
-    render();
-  });
-
-  document.getElementById("resetDemoBtn").addEventListener("click", async () => {
-    if (dataMode === "supabase") {
-      try {
-        await loadRemoteState();
-        render();
-      } catch (error) {
-        dataMessage = `重新載入失敗：${error.message}`;
-        render();
-      }
-      return;
-    }
-
-    state = defaultState();
-    filters = { driver: "all", status: "all" };
-    activeDriverId = "";
-    selectedLoginDriverId = "";
-    pinInput = "";
-    pinMessage = "";
-    saveState();
     render();
   });
 

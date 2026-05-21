@@ -253,6 +253,20 @@ button {
   white-space: nowrap;
 }
 
+.side-clock {
+  display: inline-grid;
+  min-width: 78px;
+  min-height: 40px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  place-items: center;
+  color: #102a38;
+  background: #f3c969;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
 .connection-state {
   display: flex;
   align-items: center;
@@ -284,22 +298,6 @@ button {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 22px;
-}
-
-.top-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.clock {
-  min-width: 78px;
-  padding: 10px 12px;
-  background: var(--navy);
-  color: white;
-  border-radius: 8px;
-  text-align: center;
-  font-weight: 800;
 }
 
 .ghost-btn,
@@ -1363,10 +1361,6 @@ textarea {
     flex-direction: column;
   }
 
-  .top-actions {
-    align-items: stretch;
-  }
-
   .summary-grid,
   .split-layout,
   .case-workspace.form-open,
@@ -1386,7 +1380,6 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .top-actions,
   .filter-row,
   .inline-fields {
     flex-direction: column;

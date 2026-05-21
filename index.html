@@ -37,7 +37,11 @@
             <span aria-hidden="true">📍</span>
             <b>司機入口</b>
           </button>
-          <button class="nav-item" data-view="settings" aria-label="版本更新紀錄">
+          <button class="nav-item" data-view="settings" aria-label="設定">
+            <span aria-hidden="true">⚙️</span>
+            <b>設定</b>
+          </button>
+          <button class="nav-item" data-view="releases" aria-label="版本更新紀錄">
             <span aria-hidden="true">✨</span>
             <b>版本更新紀錄</b>
           </button>
@@ -46,6 +50,7 @@
         <section class="today-panel" aria-label="今日摘要">
           <p class="muted-label">服務日期</p>
           <strong id="todayLabel"></strong>
+          <div class="side-clock" id="clock">--:--</div>
           <div class="connection-state">
             <span class="dot local"></span>
             <span>本機示範資料</span>
@@ -58,10 +63,6 @@
           <div>
             <p class="eyebrow">承辦人視角</p>
             <h2 id="viewTitle">承辦人工作台</h2>
-          </div>
-          <div class="top-actions">
-            <div class="clock" id="clock">--:--</div>
-            <button class="ghost-btn" id="resetDemoBtn" type="button">重置示範資料</button>
           </div>
         </header>
 
@@ -353,37 +354,37 @@
     </template>
 
     <template id="settingsTemplate">
-      <div class="settings-layout">
-        <section class="work-section">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">個人偏好</p>
-              <h3><span class="section-icon" aria-hidden="true">🔎</span>文字大小</h3>
-            </div>
+      <section class="work-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">個人偏好</p>
+            <h3><span class="section-icon" aria-hidden="true">🔎</span>文字大小</h3>
           </div>
-          <div class="font-size-panel">
-            <label>
-              介面文字大小
-              <input id="fontSizeRange" type="range" min="90" max="125" step="5" />
-            </label>
-            <div class="font-size-actions">
-              <span class="count-pill" id="fontSizeLabel"></span>
-              <button class="ghost-btn" id="fontSizeResetBtn" type="button">恢復預設</button>
-            </div>
-            <p class="subtext">此設定只保存在目前這台裝置與瀏覽器，不會影響其他使用者。</p>
+        </div>
+        <div class="font-size-panel">
+          <label>
+            介面文字大小
+            <input id="fontSizeRange" type="range" min="90" max="125" step="5" />
+          </label>
+          <div class="font-size-actions">
+            <span class="count-pill" id="fontSizeLabel"></span>
+            <button class="ghost-btn" id="fontSizeResetBtn" type="button">恢復預設</button>
           </div>
-        </section>
+          <p class="subtext">此設定只保存在目前這台裝置與瀏覽器，不會影響其他使用者。</p>
+        </div>
+      </section>
+    </template>
 
-        <section class="work-section">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">系統版本</p>
-              <h3><span class="section-icon" aria-hidden="true">✨</span>版本更新紀錄</h3>
-            </div>
+    <template id="releasesTemplate">
+      <section class="work-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">系統版本</p>
+            <h3><span class="section-icon" aria-hidden="true">✨</span>版本更新紀錄</h3>
           </div>
-          <div class="release-list" id="releaseList"></div>
-        </section>
-      </div>
+        </div>
+        <div class="release-list" id="releaseList"></div>
+      </section>
     </template>
 
     <script src="./app.js" defer></script>
