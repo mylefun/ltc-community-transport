@@ -287,6 +287,10 @@ button {
   transform: translateY(-1px);
 }
 
+.sidebar-collapsed .nav-list {
+  grid-template-columns: 1fr;
+}
+
 .sidebar-collapsed .nav-item {
   justify-content: center;
   padding: 14px 8px;
