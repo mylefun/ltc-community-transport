@@ -80,6 +80,9 @@ button {
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -289,7 +292,7 @@ button {
 
 .main-area {
   min-width: 0;
-  padding: 24px;
+  padding: 28px 32px;
 }
 
 .topbar {
@@ -349,6 +352,8 @@ button {
 .view-host {
   display: grid;
   gap: 18px;
+  max-width: 1480px;
+  width: 100%;
 }
 
 .summary-grid {
@@ -466,7 +471,7 @@ button {
 
 .live-map {
   position: relative;
-  min-height: 360px;
+  min-height: 440px;
   overflow: hidden;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.15)),
@@ -942,7 +947,7 @@ textarea {
 }
 
 .case-workspace.form-open {
-  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.42fr);
 }
 
 .case-form-panel[hidden] {
@@ -1177,6 +1182,124 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
+}
+
+body[data-view="driver"] {
+  background:
+    linear-gradient(180deg, rgba(15, 118, 110, 0.12), rgba(238, 242, 244, 0.4) 34%),
+    var(--bg);
+}
+
+body[data-view="driver"] .app-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-view="driver"] .sidebar {
+  position: static;
+  height: auto;
+  padding: 14px 18px;
+  gap: 12px;
+  border-right: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+body[data-view="driver"] .sidebar-head {
+  max-width: 620px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+body[data-view="driver"] .brand-text,
+body[data-view="driver"] .today-panel,
+body[data-view="driver"] .nav-item:not([data-view="driver"]) {
+  display: none;
+}
+
+body[data-view="driver"] .sidebar-toggle {
+  display: none;
+}
+
+body[data-view="driver"] .nav-list {
+  max-width: 620px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+body[data-view="driver"] .nav-item {
+  justify-content: center;
+  min-height: 48px;
+}
+
+body[data-view="driver"] .nav-item b {
+  display: block;
+}
+
+body[data-view="driver"] .main-area {
+  width: min(100%, 620px);
+  margin: 0 auto;
+  padding: 18px 14px 28px;
+}
+
+body[data-view="driver"] .topbar {
+  margin-bottom: 14px;
+}
+
+body[data-view="driver"] .topbar .eyebrow {
+  display: none;
+}
+
+body[data-view="driver"] .topbar h2 {
+  font-size: calc(24px * var(--user-font-scale));
+}
+
+body[data-view="driver"] .work-section,
+body[data-view="driver"] .driver-header,
+body[data-view="driver"] .driver-task {
+  box-shadow: 0 10px 24px rgba(23, 33, 43, 0.08);
+}
+
+body[data-view="driver"] .driver-login-grid {
+  grid-template-columns: 1fr;
+}
+
+body[data-view="driver"] .driver-card {
+  min-height: 86px;
+  padding: 18px;
+}
+
+body[data-view="driver"] .driver-card strong {
+  font-size: calc(20px * var(--user-font-scale));
+}
+
+body[data-view="driver"] .pin-panel {
+  max-width: none;
+  position: sticky;
+  bottom: 10px;
+  z-index: 5;
+}
+
+body[data-view="driver"] .pin-display {
+  height: 68px;
+  font-size: calc(30px * var(--user-font-scale));
+}
+
+body[data-view="driver"] .keypad {
+  gap: 10px;
+}
+
+body[data-view="driver"] .keypad button {
+  min-height: 64px;
+  font-size: calc(22px * var(--user-font-scale));
+}
+
+body[data-view="driver"] .driver-task {
+  grid-template-columns: 1fr;
+  padding: 18px;
+}
+
+body[data-view="driver"] .task-actions button {
+  min-height: 72px;
+  font-size: calc(19px * var(--user-font-scale));
 }
 
 .task-main {

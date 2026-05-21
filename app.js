@@ -42,6 +42,11 @@ const eventLabels = {
 
 const releaseNotes = [
   {
+    version: "v0.6.3",
+    date: "2026-05-21",
+    items: ["依使用情境調整介面：承辦人頁強化桌機工作台密度", "司機入口改為手機優先操作版型與大按鈕"],
+  },
+  {
     version: "v0.6.2",
     date: "2026-05-21",
     items: ["修正舊本機資料造成司機入口無法使用 6 碼 PIN 登入", "新增獨立設定頁", "移除重置示範資料按鈕", "將時間移至左側服務日期區塊"],
@@ -636,6 +641,7 @@ function render() {
     button.classList.toggle("active", button.dataset.view === activeView);
   });
   const visibleView = protectedViews.has(activeView) && !coordinatorUnlocked ? "coordinatorGate" : activeView;
+  document.body.dataset.view = visibleView;
   document.getElementById("viewTitle").textContent = viewTitles[visibleView];
   updateConnectionState();
 
