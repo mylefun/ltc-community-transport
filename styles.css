@@ -2187,11 +2187,12 @@ body[data-view="driver"] .task-actions button {
   }
 
   .topbar-brand {
+    order: 2;
     justify-content: flex-start;
   }
 
   .topbar-management {
-    order: 3;
+    order: 2;
     width: 100%;
     margin-left: 0;
   }
@@ -2205,8 +2206,11 @@ body[data-view="driver"] .task-actions button {
   }
 
   .topbar-actions {
+    order: 1;
     justify-content: start;
     flex-wrap: wrap;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(189, 201, 200, 0.52);
   }
 
   .view-host {
