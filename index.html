@@ -97,6 +97,7 @@
         <section id="appView" class="view-host" aria-live="polite"></section>
       </main>
     </div>
+    <div class="app-toast" id="appToast" role="status" aria-live="polite" hidden></div>
 
     <template id="homeTemplate">
       <section class="entry-shell">
@@ -205,6 +206,7 @@
               <button class="icon-add-btn material-symbols-outlined" id="openCaseFormBtn" type="button" aria-label="新增個案">add</button>
             </div>
           </div>
+          <p class="inline-notice" id="caseNotice" hidden></p>
           <div class="case-list" id="caseList"></div>
         </section>
 
@@ -349,6 +351,7 @@
               <button class="icon-add-btn material-symbols-outlined" id="openDriverFormBtn" type="button" aria-label="新增司機">add</button>
             </div>
           </div>
+          <p class="inline-notice" id="driverNotice" hidden></p>
           <div class="case-list" id="driverList"></div>
         </section>
 

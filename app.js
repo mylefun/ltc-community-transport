@@ -32,6 +32,11 @@ const eventLabels = {
 
 const releaseNotes = [
   {
+    version: "v0.7.1",
+    date: "2026-05-22",
+    items: ["新增個案與司機儲存成功提示", "新增後即時以資料庫回傳資料更新名冊選取狀態", "修正名冊搜尋狀態下重新整理後的顯示同步"],
+  },
+  {
     version: "v0.7.0",
     date: "2026-05-21",
     items: ["新增主入口首頁，承辦人與司機依身分進入系統", "承辦人新增登出功能", "個案卡片新增 Google 地圖路徑按鈕並優化狀態顯示位置"],
@@ -144,6 +149,9 @@ let pullRefreshState = {
 };
 let dataMode = "local";
 let dataMessage = "本機示範資料";
+let flashMessage = "";
+let flashTone = "success";
+let flashScope = "global";
 
 let state = normalizeState(loadState());
 state = normalizeState(state);
@@ -671,6 +679,7 @@ function render() {
   if (visibleView === "driver") renderDriver();
   if (visibleView === "settings") renderSettings();
   if (visibleView === "releases") renderReleases();
+  renderFlash();
   applyGlobalSearch();
 }
 
@@ -684,10 +693,40 @@ function applyGlobalSearch() {
 
 function refreshCases() {
   renderCases();
+  applyGlobalSearch();
 }
 
 function refreshDrivers() {
   renderDrivers();
+  applyGlobalSearch();
+}
+
+function setFlash(message, tone = "success", scope = "global") {
+  flashMessage = message;
+  flashTone = tone;
+  flashScope = scope;
+  renderFlash();
+}
+
+function renderFlash() {
+  const toast = document.getElementById("appToast");
+  if (toast) {
+    toast.hidden = !flashMessage;
+    toast.textContent = flashMessage;
+    toast.className = `app-toast ${flashTone}`;
+  }
+  renderInlineNotice("caseNotice");
+  renderInlineNotice("driverNotice");
+}
+
+function renderInlineNotice(id) {
+  const notice = document.getElementById(id);
+  if (!notice) return;
+  const noticeScope = id === "caseNotice" ? "cases" : "drivers";
+  const visible = Boolean(flashMessage) && (flashScope === "global" || flashScope === noticeScope);
+  notice.hidden = !visible;
+  notice.textContent = flashMessage;
+  notice.className = `inline-notice ${flashTone}`;
 }
 
 function applyFontScale() {
@@ -1204,6 +1243,7 @@ function renderCases(host = document.getElementById("appView")) {
   });
   document.getElementById("caseList").addEventListener("click", handleCaseAction);
   if (editingCaseId) fillCaseForm(editingCaseId);
+  renderFlash();
 }
 
 function renderCaseCard(person) {
@@ -1336,6 +1376,7 @@ async function handleCaseSubmit(event) {
   const duplicate = findDuplicateCase(newCase, editingId);
   if (duplicate) {
     dataMessage = duplicate;
+    setFlash(duplicate, "error", "cases");
     refreshCases();
     return;
   }
@@ -1352,12 +1393,15 @@ async function handleCaseSubmit(event) {
             }
           : null,
       });
+      const savedCase = findSavedCase(newCase, editingId);
       editingCaseId = "";
-      selectedCaseId = newCase.id;
+      selectedCaseId = savedCase?.id || "";
       caseFormOpen = false;
+      setFlash(`${editingId ? "已更新" : "已新增"}個案：${savedCase?.name || newCase.name}`, "success", "cases");
       refreshCases();
     } catch (error) {
-      dataMessage = `新增失敗：${error.message}`;
+      dataMessage = `個案資料儲存失敗：${error.message}`;
+      setFlash(dataMessage, "error", "cases");
       refreshCases();
     }
     return;
@@ -1369,6 +1413,7 @@ async function handleCaseSubmit(event) {
     selectedCaseId = newCase.id;
     caseFormOpen = false;
     saveState();
+    setFlash(`已更新個案：${newCase.name}`, "success", "cases");
     refreshCases();
     return;
   }
@@ -1397,6 +1442,7 @@ async function handleCaseSubmit(event) {
   saveState();
   selectedCaseId = newCase.id;
   caseFormOpen = false;
+  setFlash(`已新增個案：${newCase.name}`, "success", "cases");
   refreshCases();
 }
 
@@ -1519,6 +1565,7 @@ function renderDrivers(host = document.getElementById("appView")) {
   });
   document.getElementById("driverList").addEventListener("click", handleDriverManageAction);
   if (editingDriverId) fillDriverForm(editingDriverId);
+  renderFlash();
 }
 
 function sameText(left, right) {
@@ -1555,6 +1602,24 @@ function findDuplicateDriver(driver, editingId = "") {
   if (driver.identityNo && sameText(duplicate.identityNo, driver.identityNo)) return `司機身分證字號 ${driver.identityNo} 已存在於 ${duplicate.name}。`;
   if (sameText(duplicate.vehicleNo, driver.vehicleNo)) return `車號 ${driver.vehicleNo} 已由 ${duplicate.name} 使用。`;
   return `${driver.name} 與電話 ${driver.phone} 已存在，請確認是否重複新增。`;
+}
+
+function findSavedCase(person, editingId = "") {
+  if (editingId) return state.cases.find((item) => item.id === editingId);
+  return (
+    state.cases.find((item) => sameText(item.caseNo, person.caseNo)) ||
+    state.cases.find((item) => person.identityNo && sameText(item.identityNo, person.identityNo)) ||
+    state.cases.find((item) => sameText(item.name, person.name) && sameText(item.phone, person.phone))
+  );
+}
+
+function findSavedDriver(driver, editingId = "") {
+  if (editingId) return state.drivers.find((item) => item.id === editingId);
+  return (
+    state.drivers.find((item) => sameText(item.vehicleNo, driver.vehicleNo)) ||
+    state.drivers.find((item) => driver.identityNo && sameText(item.identityNo, driver.identityNo)) ||
+    state.drivers.find((item) => sameText(item.name, driver.name) && sameText(item.phone, driver.phone))
+  );
 }
 
 function maskIdentity(value) {
@@ -1644,12 +1709,14 @@ async function handleDriverSubmit(event) {
   const duplicate = findDuplicateDriver(driver, editingId);
   if (duplicate) {
     dataMessage = duplicate;
+    setFlash(duplicate, "error", "drivers");
     refreshDrivers();
     return;
   }
 
   if (!/^\d{6}$/.test(driver.pin)) {
     dataMessage = "司機 PIN 必須是 6 位數字。";
+    setFlash(dataMessage, "error", "drivers");
     refreshDrivers();
     return;
   }
@@ -1657,12 +1724,15 @@ async function handleDriverSubmit(event) {
   if (dataMode === "supabase") {
     try {
       await apiAction(editingId ? "update_driver" : "create_driver", { driver });
+      const savedDriver = findSavedDriver(driver, editingId);
       editingDriverId = "";
-      selectedDriverId = driver.id;
+      selectedDriverId = savedDriver?.id || "";
       driverFormOpen = false;
+      setFlash(`${editingId ? "已更新" : "已新增"}司機：${savedDriver?.name || driver.name}`, "success", "drivers");
       refreshDrivers();
     } catch (error) {
       dataMessage = `司機資料儲存失敗：${error.message}`;
+      setFlash(dataMessage, "error", "drivers");
       refreshDrivers();
     }
     return;
@@ -1685,6 +1755,7 @@ async function handleDriverSubmit(event) {
   selectedDriverId = driver.id;
   driverFormOpen = false;
   saveState();
+  setFlash(`${editingId ? "已更新" : "已新增"}司機：${driver.name}`, "success", "drivers");
   refreshDrivers();
 }
 
