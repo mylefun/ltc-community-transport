@@ -115,6 +115,7 @@ let filters = {
   status: "all",
 };
 let managementTab = "cases";
+let globalSearch = "";
 let sidebarCollapsed = localStorage.getItem("ltc-sidebar-collapsed") === "true";
 let editingCaseId = "";
 let selectedCaseId = "";
@@ -297,10 +298,14 @@ async function apiAction(action, payload = {}) {
 function updateConnectionState() {
   const target = document.querySelector(".connection-state span:last-child");
   const dot = document.querySelector(".connection-state .dot");
-  if (!target || !dot) return;
-  target.textContent = dataMessage;
-  dot.classList.toggle("online", dataMode === "supabase");
-  dot.classList.toggle("local", dataMode !== "supabase");
+  const topTarget = document.getElementById("topbarConnection");
+  const topDot = document.querySelector(".live-chip .dot");
+  if (target) target.textContent = dataMessage;
+  if (topTarget) topTarget.textContent = dataMessage;
+  [dot, topDot].filter(Boolean).forEach((item) => {
+    item.classList.toggle("online", dataMode === "supabase");
+    item.classList.toggle("local", dataMode !== "supabase");
+  });
 }
 
 function defaultState() {
@@ -657,6 +662,15 @@ function render() {
   if (visibleView === "driver") renderDriver();
   if (visibleView === "settings") renderSettings();
   if (visibleView === "releases") renderReleases();
+  applyGlobalSearch();
+}
+
+function applyGlobalSearch() {
+  const query = globalSearch.trim().toLowerCase();
+  document.querySelectorAll(".ride-row, .case-card, .driver-card").forEach((item) => {
+    const text = item.textContent.toLowerCase();
+    item.classList.toggle("is-search-hidden", Boolean(query) && !text.includes(query));
+  });
 }
 
 function refreshCases() {
@@ -2068,7 +2082,10 @@ function renderReleases() {
 
 function updateClock() {
   const target = document.getElementById("clock");
-  if (target) target.textContent = localTime();
+  const topTarget = document.getElementById("topbarClock");
+  const time = localTime();
+  if (target) target.textContent = time;
+  if (topTarget) topTarget.textContent = time;
 }
 
 async function refreshCurrentData() {
@@ -2164,6 +2181,14 @@ async function init() {
     localStorage.setItem("ltc-sidebar-collapsed", String(sidebarCollapsed));
     render();
   });
+
+  const globalSearchInput = document.getElementById("globalSearchInput");
+  if (globalSearchInput) {
+    globalSearchInput.addEventListener("input", (event) => {
+      globalSearch = event.target.value;
+      applyGlobalSearch();
+    });
+  }
 
   setupPullToRefresh();
   updateClock();

@@ -58,50 +58,80 @@
       </aside>
 
       <main class="main-area">
+        <header class="app-topbar" aria-label="系統工具列">
+          <div class="topbar-brand">
+            <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
+            <strong>社區交通車調度中心</strong>
+          </div>
+          <label class="topbar-search">
+            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            <input id="globalSearchInput" type="search" placeholder="搜尋個案、司機、車號..." autocomplete="off" />
+          </label>
+          <div class="topbar-actions">
+            <span class="live-chip">
+              <span class="dot local"></span>
+              <span id="topbarConnection">本機示範資料</span>
+            </span>
+            <span class="topbar-clock" id="topbarClock">--:--</span>
+            <span class="topbar-avatar" aria-hidden="true">LC</span>
+          </div>
+        </header>
         <section id="appView" class="view-host" aria-live="polite"></section>
       </main>
     </div>
 
     <template id="dashboardTemplate">
-      <div class="summary-grid" id="summaryGrid"></div>
+      <section class="dispatch-shell">
+        <div class="dispatch-main">
+          <div class="summary-grid" id="summaryGrid"></div>
 
-      <section class="dashboard-grid">
-        <div class="work-section map-section">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">司機即時位置</p>
-              <h3>接送定位地圖</h3>
+          <section class="work-section schedule-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">即時接送狀態</p>
+                <h3>今日班表</h3>
+              </div>
+              <div class="filter-row">
+                <label>
+                  司機
+                  <select id="driverFilter"></select>
+                </label>
+                <label>
+                  狀態
+                  <select id="statusFilter">
+                    <option value="all">全部</option>
+                    <option value="scheduled">待接</option>
+                    <option value="picked_up">接送中</option>
+                    <option value="completed">已完成</option>
+                    <option value="late">可能延遲</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <span class="count-pill" id="mapDriverCount"></span>
-          </div>
-          <div class="live-map" id="liveMap" aria-label="司機定位地圖"></div>
+            <div class="route-board" id="routeBoard"></div>
+          </section>
         </div>
-      </section>
 
-      <section class="work-section">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">即時接送狀態</p>
-            <h3>今日班表</h3>
-          </div>
-          <div class="filter-row">
-            <label>
-              司機
-              <select id="driverFilter"></select>
-            </label>
-            <label>
-              狀態
-              <select id="statusFilter">
-                <option value="all">全部</option>
-                <option value="scheduled">待接</option>
-                <option value="picked_up">接送中</option>
-                <option value="completed">已完成</option>
-                <option value="late">可能延遲</option>
-              </select>
-            </label>
-          </div>
-        </div>
-        <div class="route-board" id="routeBoard"></div>
+        <aside class="dispatch-side">
+          <section class="work-section map-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">司機即時位置</p>
+                <h3>接送定位地圖</h3>
+              </div>
+              <span class="count-pill" id="mapDriverCount"></span>
+            </div>
+            <div class="live-map" id="liveMap" aria-label="司機定位地圖"></div>
+          </section>
+
+          <section class="fleet-status-strip">
+            <div>
+              <p class="eyebrow">Live Fleet Feed</p>
+              <strong>車隊動態同步中</strong>
+            </div>
+            <span class="material-symbols-outlined" aria-hidden="true">sync</span>
+          </section>
+        </aside>
       </section>
 
       <section class="management-shell">
