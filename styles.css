@@ -401,11 +401,15 @@ button {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
 .summary-card {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -414,6 +418,14 @@ button {
   box-shadow: var(--shadow);
   position: relative;
   overflow: hidden;
+}
+
+.summary-card .eyebrow,
+.summary-card .subtext {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .summary-card::after {
@@ -428,8 +440,8 @@ button {
 
 .summary-card strong {
   display: block;
-  margin-top: 6px;
   font-size: 30px;
+  line-height: 1;
 }
 
 .summary-card.waiting {
