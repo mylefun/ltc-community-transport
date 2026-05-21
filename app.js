@@ -737,11 +737,11 @@ function renderDashboard() {
   };
 
   document.getElementById("summaryGrid").innerHTML = [
-    summaryCard("今日接送", stats.total, "全部班次", ""),
-    summaryCard("待接", stats.scheduled, "尚未上車", "waiting"),
-    summaryCard("接送中", stats.picked_up, "已接到未送達", "moving"),
-    summaryCard("已完成", stats.completed, "完成送達", "done"),
-    summaryCard("可能延遲", stats.late, "逾預定 10 分鐘", "alert"),
+    summaryCard("今日接送", stats.total, "全部班次", "", "event_available"),
+    summaryCard("待接", stats.scheduled, "尚未上車", "waiting", "pending_actions"),
+    summaryCard("接送中", stats.picked_up, "已接到未送達", "moving", "directions_car"),
+    summaryCard("已完成", stats.completed, "完成送達", "done", "task_alt"),
+    summaryCard("可能延遲", stats.late, "逾預定 10 分鐘", "alert", "warning"),
   ].join("");
 
   document.getElementById("mapDriverCount").textContent = `${state.drivers.length} 位司機`;
@@ -1063,12 +1063,15 @@ function formatCoordinate(location) {
   return `${Number(location.lat).toFixed(5)}, ${Number(location.lng).toFixed(5)}`;
 }
 
-function summaryCard(label, value, hint, tone) {
+function summaryCard(label, value, hint, tone, icon = "analytics") {
   return `
     <article class="summary-card ${tone}">
-      <p class="eyebrow">${escapeHTML(label)}</p>
-      <strong>${escapeHTML(value)}</strong>
-      <p class="subtext">${escapeHTML(hint)}</p>
+      <span class="summary-icon material-symbols-outlined" aria-hidden="true">${escapeHTML(icon)}</span>
+      <div>
+        <p class="eyebrow">${escapeHTML(label)}</p>
+        <strong>${escapeHTML(value)}</strong>
+        <p class="subtext">${escapeHTML(hint)}</p>
+      </div>
     </article>
   `;
 }
@@ -1110,7 +1113,7 @@ function renderRideRow(trip) {
         <p class="subtext">接到 ${escapeHTML(trip.pickupTime || "--:--")} · 送達 ${escapeHTML(trip.dropoffTime || "--:--")}</p>
         <p class="subtext">定位 ${escapeHTML(formatEventTime(state.driverLocations[trip.driverId]?.updatedAt))}</p>
         <a class="route-icon-btn" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(driver?.name ?? "司機")} 的 Google 地圖路徑" title="開啟 Google 地圖路徑">
-          🗺️
+          <span class="material-symbols-outlined" aria-hidden="true">map</span>
         </a>
       </div>
     </article>
@@ -1184,16 +1187,20 @@ function renderCaseCard(person) {
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(person.name)} 操作選項">
         <button class="primary-btn" type="button" data-action="edit" data-case-id="${escapeHTML(person.id)}">
-          ✏️ 編輯
+          <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+          編輯
         </button>
         <button class="secondary-btn" type="button" data-action="trip" data-case-id="${escapeHTML(person.id)}" ${hasTodayTrip ? "disabled" : ""}>
-          ${hasTodayTrip ? "✅ 已在今日班表" : "📅 加入今日班表"}
+          <span class="material-symbols-outlined" aria-hidden="true">${hasTodayTrip ? "event_available" : "event_upcoming"}</span>
+          ${hasTodayTrip ? "已在今日班表" : "加入今日班表"}
         </button>
         <button class="ghost-btn" type="button" data-action="toggle" data-case-id="${escapeHTML(person.id)}">
-          ${person.active ? "⏸️ 停用個案" : "▶️ 恢復服務"}
+          <span class="material-symbols-outlined" aria-hidden="true">${person.active ? "pause" : "play_arrow"}</span>
+          ${person.active ? "停用個案" : "恢復服務"}
         </button>
         <button class="danger-btn" type="button" data-action="delete" data-case-id="${escapeHTML(person.id)}">
-          🗑️ 刪除
+          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          刪除
         </button>
       </div>
     `
@@ -1522,11 +1529,18 @@ function renderDriverManageCard(driver) {
   const actions = isSelected
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(driver.name)} 操作選項">
-        <button class="primary-btn" type="button" data-action="edit" data-driver-id="${escapeHTML(driver.id)}">✏️ 編輯</button>
-        <button class="ghost-btn" type="button" data-action="toggle" data-driver-id="${escapeHTML(driver.id)}">
-          ${driver.active ? "⏸️ 停用司機" : "▶️ 恢復服務"}
+        <button class="primary-btn" type="button" data-action="edit" data-driver-id="${escapeHTML(driver.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+          編輯
         </button>
-        <button class="danger-btn" type="button" data-action="delete" data-driver-id="${escapeHTML(driver.id)}">🗑️ 刪除</button>
+        <button class="ghost-btn" type="button" data-action="toggle" data-driver-id="${escapeHTML(driver.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">${driver.active ? "pause" : "play_arrow"}</span>
+          ${driver.active ? "停用司機" : "恢復服務"}
+        </button>
+        <button class="danger-btn" type="button" data-action="delete" data-driver-id="${escapeHTML(driver.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          刪除
+        </button>
       </div>
     `
     : `
