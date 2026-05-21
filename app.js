@@ -18,7 +18,7 @@ const coordinatorActions = new Set([
 ]);
 
 const viewTitles = {
-  dashboard: "承辦人工作台",
+  dashboard: "承辦人入口",
   cases: "個案資料",
   drivers: "司機管理",
   driver: "司機入口",
@@ -41,6 +41,11 @@ const eventLabels = {
 };
 
 const releaseNotes = [
+  {
+    version: "v0.6.5",
+    date: "2026-05-21",
+    items: ["手機版新增下拉重新整理", "承辦人入口移至側邊導覽第一項", "個案管理與司機管理整合進承辦人入口"],
+  },
   {
     version: "v0.6.4",
     date: "2026-05-21",
@@ -119,6 +124,7 @@ let filters = {
   driver: "all",
   status: "all",
 };
+let managementTab = "cases";
 let sidebarCollapsed = localStorage.getItem("ltc-sidebar-collapsed") === "true";
 let editingCaseId = "";
 let selectedCaseId = "";
@@ -136,6 +142,11 @@ let mapView = {
   panY: 0,
 };
 let mapDrag = null;
+let pullRefreshState = {
+  active: false,
+  startY: 0,
+  distance: 0,
+};
 let dataMode = "local";
 let dataMessage = "本機示範資料";
 
@@ -659,6 +670,22 @@ function render() {
   if (visibleView === "releases") renderReleases();
 }
 
+function refreshCases() {
+  if (activeView === "dashboard") {
+    renderDashboard();
+    return;
+  }
+  renderCases();
+}
+
+function refreshDrivers() {
+  if (activeView === "dashboard") {
+    renderDashboard();
+    return;
+  }
+  renderDrivers();
+}
+
 function applyFontScale() {
   const safeScale = Number.isFinite(fontScale) ? Math.min(125, Math.max(90, fontScale)) : 100;
   document.documentElement.style.setProperty("--user-font-scale", safeScale / 100);
@@ -780,6 +807,26 @@ function renderDashboard() {
     renderDashboard();
   });
 
+  setupManagementHub();
+}
+
+function setupManagementHub() {
+  const tabs = document.querySelectorAll("[data-management-tab]");
+  tabs.forEach((button) => {
+    button.classList.toggle("active", button.dataset.managementTab === managementTab);
+    button.addEventListener("click", () => {
+      managementTab = button.dataset.managementTab;
+      renderDashboard();
+    });
+  });
+
+  const view = document.getElementById("managementView");
+  if (!view) return;
+  if (managementTab === "drivers") {
+    renderDrivers(view);
+    return;
+  }
+  renderCases(view);
 }
 
 function renderDriverMap() {
@@ -1104,8 +1151,7 @@ function googleMapsRouteUrl(trip) {
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-function renderCases() {
-  const host = document.getElementById("appView");
+function renderCases(host = document.getElementById("appView")) {
   host.replaceChildren(document.getElementById("casesTemplate").content.cloneNode(true));
 
   if (selectedCaseId && !state.cases.some((person) => person.id === selectedCaseId)) {
@@ -1131,13 +1177,13 @@ function renderCases() {
     editingCaseId = "";
     selectedCaseId = "";
     caseFormOpen = true;
-    renderCases();
+    refreshCases();
   });
   document.getElementById("caseForm").addEventListener("submit", handleCaseSubmit);
   document.getElementById("caseCancelBtn").addEventListener("click", () => {
     editingCaseId = "";
     caseFormOpen = false;
-    renderCases();
+    refreshCases();
   });
   document.getElementById("caseList").addEventListener("click", handleCaseAction);
   if (editingCaseId) fillCaseForm(editingCaseId);
@@ -1256,7 +1302,7 @@ async function handleCaseSubmit(event) {
   const duplicate = findDuplicateCase(newCase, editingId);
   if (duplicate) {
     dataMessage = duplicate;
-    renderCases();
+    refreshCases();
     return;
   }
 
@@ -1275,10 +1321,10 @@ async function handleCaseSubmit(event) {
       editingCaseId = "";
       selectedCaseId = newCase.id;
       caseFormOpen = false;
-      renderCases();
+      refreshCases();
     } catch (error) {
       dataMessage = `新增失敗：${error.message}`;
-      renderCases();
+      refreshCases();
     }
     return;
   }
@@ -1289,7 +1335,7 @@ async function handleCaseSubmit(event) {
     selectedCaseId = newCase.id;
     caseFormOpen = false;
     saveState();
-    renderCases();
+    refreshCases();
     return;
   }
 
@@ -1317,7 +1363,7 @@ async function handleCaseSubmit(event) {
   saveState();
   selectedCaseId = newCase.id;
   caseFormOpen = false;
-  renderCases();
+  refreshCases();
 }
 
 async function handleCaseAction(event) {
@@ -1328,7 +1374,7 @@ async function handleCaseAction(event) {
     selectedCaseId = card.dataset.caseId === selectedCaseId ? "" : card.dataset.caseId;
     editingCaseId = "";
     caseFormOpen = false;
-    renderCases();
+    refreshCases();
     return;
   }
 
@@ -1339,7 +1385,7 @@ async function handleCaseAction(event) {
   if (button.dataset.action === "edit") {
     editingCaseId = person.id;
     caseFormOpen = true;
-    renderCases();
+    refreshCases();
     return;
   }
 
@@ -1366,10 +1412,10 @@ async function handleCaseAction(event) {
       }
       editingCaseId = "";
       caseFormOpen = false;
-      renderCases();
+      refreshCases();
     } catch (error) {
       dataMessage = `更新失敗：${error.message}`;
-      renderCases();
+      refreshCases();
     }
     return;
   }
@@ -1406,11 +1452,10 @@ async function handleCaseAction(event) {
   }
 
   saveState();
-  renderCases();
+  refreshCases();
 }
 
-function renderDrivers() {
-  const host = document.getElementById("appView");
+function renderDrivers(host = document.getElementById("appView")) {
   host.replaceChildren(document.getElementById("driversTemplate").content.cloneNode(true));
 
   if (selectedDriverId && !state.drivers.some((driver) => driver.id === selectedDriverId)) {
@@ -1429,13 +1474,13 @@ function renderDrivers() {
     editingDriverId = "";
     selectedDriverId = "";
     driverFormOpen = true;
-    renderDrivers();
+    refreshDrivers();
   });
   document.getElementById("driverForm").addEventListener("submit", handleDriverSubmit);
   document.getElementById("driverCancelBtn").addEventListener("click", () => {
     editingDriverId = "";
     driverFormOpen = false;
-    renderDrivers();
+    refreshDrivers();
   });
   document.getElementById("driverList").addEventListener("click", handleDriverManageAction);
   if (editingDriverId) fillDriverForm(editingDriverId);
@@ -1557,13 +1602,13 @@ async function handleDriverSubmit(event) {
   const duplicate = findDuplicateDriver(driver, editingId);
   if (duplicate) {
     dataMessage = duplicate;
-    renderDrivers();
+    refreshDrivers();
     return;
   }
 
   if (!/^\d{6}$/.test(driver.pin)) {
     dataMessage = "司機 PIN 必須是 6 位數字。";
-    renderDrivers();
+    refreshDrivers();
     return;
   }
 
@@ -1573,10 +1618,10 @@ async function handleDriverSubmit(event) {
       editingDriverId = "";
       selectedDriverId = driver.id;
       driverFormOpen = false;
-      renderDrivers();
+      refreshDrivers();
     } catch (error) {
       dataMessage = `司機資料儲存失敗：${error.message}`;
-      renderDrivers();
+      refreshDrivers();
     }
     return;
   }
@@ -1598,7 +1643,7 @@ async function handleDriverSubmit(event) {
   selectedDriverId = driver.id;
   driverFormOpen = false;
   saveState();
-  renderDrivers();
+  refreshDrivers();
 }
 
 async function handleDriverManageAction(event) {
@@ -1609,7 +1654,7 @@ async function handleDriverManageAction(event) {
     selectedDriverId = card.dataset.driverId === selectedDriverId ? "" : card.dataset.driverId;
     editingDriverId = "";
     driverFormOpen = false;
-    renderDrivers();
+    refreshDrivers();
     return;
   }
 
@@ -1620,7 +1665,7 @@ async function handleDriverManageAction(event) {
   if (button.dataset.action === "edit") {
     editingDriverId = driver.id;
     driverFormOpen = true;
-    renderDrivers();
+    refreshDrivers();
     return;
   }
 
@@ -1639,10 +1684,10 @@ async function handleDriverManageAction(event) {
       }
       editingDriverId = "";
       driverFormOpen = false;
-      renderDrivers();
+      refreshDrivers();
     } catch (error) {
       dataMessage = `司機資料更新失敗：${error.message}`;
-      renderDrivers();
+      refreshDrivers();
     }
     return;
   }
@@ -1659,7 +1704,7 @@ async function handleDriverManageAction(event) {
   editingDriverId = "";
   driverFormOpen = false;
   saveState();
-  renderDrivers();
+  refreshDrivers();
 }
 
 function renderDriver() {
@@ -2026,6 +2071,80 @@ function updateClock() {
   if (target) target.textContent = localTime();
 }
 
+async function refreshCurrentData() {
+  const indicator = document.getElementById("pullRefresh");
+  indicator.textContent = "正在重新整理...";
+  document.body.classList.add("refreshing");
+
+  if (dataMode === "supabase") {
+    await loadRemoteState();
+  } else {
+    state = normalizeState(loadState());
+    dataMessage = "本機示範資料已更新";
+  }
+
+  render();
+  window.setTimeout(() => {
+    document.body.classList.remove("pulling", "refreshing");
+    document.documentElement.style.setProperty("--pull-distance", "0px");
+    const nextIndicator = document.getElementById("pullRefresh");
+    if (nextIndicator) nextIndicator.textContent = "下拉重新整理";
+  }, 300);
+}
+
+function setupPullToRefresh() {
+  const isMobileWidth = () => window.matchMedia("(max-width: 860px)").matches;
+
+  window.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!isMobileWidth() || window.scrollY > 0 || event.touches.length !== 1) return;
+      pullRefreshState = {
+        active: true,
+        startY: event.touches[0].clientY,
+        distance: 0,
+      };
+    },
+    { passive: true },
+  );
+
+  window.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!pullRefreshState.active || !isMobileWidth()) return;
+      const distance = Math.max(0, event.touches[0].clientY - pullRefreshState.startY);
+      if (distance < 8) return;
+      event.preventDefault();
+      pullRefreshState.distance = Math.min(120, distance * 0.55);
+      document.body.classList.add("pulling");
+      document.documentElement.style.setProperty("--pull-distance", `${pullRefreshState.distance}px`);
+      const indicator = document.getElementById("pullRefresh");
+      if (indicator) indicator.textContent = pullRefreshState.distance > 72 ? "放開重新整理" : "下拉重新整理";
+    },
+    { passive: false },
+  );
+
+  window.addEventListener("touchend", () => {
+    if (!pullRefreshState.active) return;
+    const shouldRefresh = pullRefreshState.distance > 72;
+    pullRefreshState.active = false;
+    pullRefreshState.distance = 0;
+
+    if (shouldRefresh) {
+      refreshCurrentData().catch((error) => {
+        dataMessage = `重新整理失敗：${error.message}`;
+        document.body.classList.remove("pulling", "refreshing");
+        document.documentElement.style.setProperty("--pull-distance", "0px");
+        render();
+      });
+      return;
+    }
+
+    document.body.classList.remove("pulling");
+    document.documentElement.style.setProperty("--pull-distance", "0px");
+  });
+}
+
 async function init() {
   document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("zh-TW", {
     year: "numeric",
@@ -2046,14 +2165,7 @@ async function init() {
     render();
   });
 
-  document.getElementById("homeBtn").addEventListener("click", () => {
-    activeDriverId = "";
-    selectedLoginDriverId = "";
-    pinInput = "";
-    pinMessage = "";
-    requestView("dashboard");
-  });
-
+  setupPullToRefresh();
   updateClock();
   setInterval(updateClock, 15_000);
   try {

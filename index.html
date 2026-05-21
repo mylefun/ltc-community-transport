@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="pull-refresh" id="pullRefresh" aria-hidden="true">下拉重新整理</div>
     <div class="app-shell">
       <aside class="sidebar" aria-label="主選單">
         <div class="sidebar-head">
@@ -21,17 +22,9 @@
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item active" data-view="dashboard" aria-label="承辦人工作台">
+          <button class="nav-item active" data-view="dashboard" aria-label="返回首頁，承辦人入口">
             <span aria-hidden="true">🏠</span>
-            <b>承辦人工作台</b>
-          </button>
-          <button class="nav-item" data-view="cases" aria-label="個案資料">
-            <span aria-hidden="true">🧑‍🦽</span>
-            <b>個案資料</b>
-          </button>
-          <button class="nav-item" data-view="drivers" aria-label="司機管理">
-            <span aria-hidden="true">🚐</span>
-            <b>司機管理</b>
+            <b>承辦人入口</b>
           </button>
           <button class="nav-item" data-view="driver" aria-label="司機入口">
             <span aria-hidden="true">📍</span>
@@ -62,9 +55,8 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">承辦人視角</p>
-            <h2 id="viewTitle">承辦人工作台</h2>
+            <h2 id="viewTitle">承辦人入口</h2>
           </div>
-          <button class="home-btn" id="homeBtn" type="button" aria-label="返回首頁">🏠 返回首頁</button>
         </header>
 
         <section id="appView" class="view-host" aria-live="polite"></section>
@@ -122,6 +114,20 @@
           </div>
         </div>
         <div class="route-board" id="routeBoard"></div>
+      </section>
+
+      <section class="management-shell">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">承辦管理</p>
+            <h3>個案與司機管理</h3>
+          </div>
+          <div class="management-tabs" role="tablist" aria-label="承辦管理切換">
+            <button class="tab-btn active" type="button" data-management-tab="cases">🧑‍🦽 個案管理</button>
+            <button class="tab-btn" type="button" data-management-tab="drivers">🚐 司機管理</button>
+          </div>
+        </div>
+        <div id="managementView"></div>
       </section>
     </template>
 
@@ -340,7 +346,7 @@
           <span class="gate-icon" aria-hidden="true">🔐</span>
           <p class="eyebrow">承辦人限定</p>
           <h3>請先解鎖個管資料</h3>
-          <p class="subtext">個案資料、承辦人工作台、司機管理與版本紀錄只開放承辦人查看與編輯。</p>
+          <p class="subtext">個案資料、承辦人入口、司機管理與版本紀錄只開放承辦人查看與編輯。</p>
           <form class="gate-form" id="coordinatorGateForm">
             <label>
               承辦人密碼
