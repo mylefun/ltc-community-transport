@@ -582,7 +582,6 @@ function driverPayload(driver) {
     identity_no: driver.identityNo || null,
     phone: driver.phone,
     vehicle_no: driver.vehicleNo,
-    route_label: null,
     quick_login_code_hash: driver.pin,
     active: driver.active ?? true,
   };

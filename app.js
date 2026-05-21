@@ -1109,7 +1109,8 @@ function renderRideRow(trip) {
       <div class="ride-time">
         <span class="subtext">預定上車</span>
         <strong>${escapeHTML(trip.scheduledPickup)}</strong>
-        <span class="subtext">送達 ${escapeHTML(trip.scheduledDropoff)}</span>
+        <span class="subtext">送達</span>
+        <strong>${escapeHTML(trip.scheduledDropoff)}</strong>
       </div>
       <div class="ride-person">
         <strong>${escapeHTML(person?.name ?? "未知個案")}</strong>

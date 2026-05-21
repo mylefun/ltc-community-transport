@@ -25,7 +25,6 @@ create table if not exists public.drivers (
   identity_no text unique,
   phone text,
   vehicle_no text not null,
-  route_label text,
   quick_login_code_hash text,
   active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -613,8 +612,7 @@ select
   r.pickup_address,
   r.destination_address,
   d.display_name as driver_name,
-  d.vehicle_no,
-  d.route_label
+  d.vehicle_no
 from public.daily_rides r
 join public.cases c on c.id = r.case_id
 join public.drivers d on d.id = r.driver_id;
@@ -626,7 +624,6 @@ select
   d.id as driver_id,
   d.display_name as driver_name,
   d.vehicle_no,
-  d.route_label,
   dl.ride_id,
   dl.latitude,
   dl.longitude,
@@ -637,3 +634,6 @@ select
 from public.drivers d
 left join public.driver_locations dl on dl.driver_id = d.id
 where d.active = true;
+
+alter table public.drivers
+  drop column if exists route_label;

@@ -1286,7 +1286,7 @@ textarea {
 
 .ride-row {
   display: grid;
-  grid-template-columns: 110px minmax(180px, 1fr) minmax(160px, 0.85fr) 156px 132px;
+  grid-template-columns: 210px minmax(180px, 1fr) minmax(160px, 0.85fr) 156px 132px;
   gap: 14px;
   align-items: center;
   padding: 16px;
@@ -1297,8 +1297,10 @@ textarea {
 }
 
 .ride-time {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .ride-time strong {
