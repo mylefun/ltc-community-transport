@@ -77,9 +77,26 @@
                 <span class="material-symbols-outlined" aria-hidden="true">airport_shuttle</span>
                 司機管理
               </button>
+              <button class="topbar-management-btn" type="button" data-topbar-view="schedules">
+                <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
+                排班管理
+              </button>
             </div>
           </div>
           <div class="topbar-actions">
+            <div class="notification-container">
+              <button class="topbar-action-btn notification-bell-btn" id="notificationBellBtn" type="button" aria-label="系統通知">
+                <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
+                <span class="notification-badge" id="notificationBadge" hidden>0</span>
+              </button>
+              <div class="notification-dropdown" id="notificationDropdown" hidden>
+                <div class="notification-dropdown-header">
+                  <strong>系統通知</strong>
+                  <button class="clear-all-btn" id="clearAllNotificationsBtn" type="button">清除全部</button>
+                </div>
+                <div class="notification-dropdown-body" id="notificationList"></div>
+              </div>
+            </div>
             <span class="live-chip">
               <span class="dot local"></span>
               <span id="topbarConnection">本機示範資料</span>
@@ -173,149 +190,6 @@
             </div>
             <div class="route-board" id="routeBoard"></div>
           </section>
-
-          <section class="work-section schedule-manager-panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">接送排程</p>
-                <h3>單次與週期性接送</h3>
-              </div>
-              <div class="heading-actions">
-                <span class="count-pill" id="scheduleCount"></span>
-                <button class="icon-add-btn material-symbols-outlined" id="openScheduleFormBtn" type="button" aria-label="新增排程">add</button>
-              </div>
-            </div>
-            <div class="schedule-layout">
-              <div class="schedule-list" id="scheduleList"></div>
-
-              <section class="work-section compact-section schedule-form-panel" id="scheduleFormPanel" hidden>
-                <div class="section-heading">
-                  <div>
-                    <p class="eyebrow" id="scheduleFormMode">新增排程</p>
-                    <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">event_repeat</span>排程資料</h3>
-                  </div>
-                </div>
-                <form class="case-form" id="scheduleForm">
-                  <input type="hidden" name="id" />
-                  <label>
-                    個案
-                    <select name="caseId" id="scheduleCaseSelect"></select>
-                  </label>
-                  <label>
-                    指派司機
-                    <select name="driverId" id="scheduleDriverSelect"></select>
-                  </label>
-                  <label>
-                    排程類型
-                    <select name="scheduleType" id="scheduleTypeSelect">
-                      <option value="single">單次</option>
-                      <option value="weekly">週期</option>
-                    </select>
-                  </label>
-                  <label>
-                    單次日期
-                    <input name="serviceDate" type="date" />
-                  </label>
-                  <label>
-                    起始日期
-                    <input name="startDate" type="date" />
-                  </label>
-                  <label>
-                    結束日期
-                    <input name="endDate" type="date" />
-                  </label>
-                  <fieldset class="weekday-fieldset full">
-                    <legend>每週星期</legend>
-                    <div class="weekday-grid">
-                      <label><input type="checkbox" name="daysOfWeek" value="0" /> 日</label>
-                      <label><input type="checkbox" name="daysOfWeek" value="1" /> 一</label>
-                      <label><input type="checkbox" name="daysOfWeek" value="2" /> 二</label>
-                      <label><input type="checkbox" name="daysOfWeek" value="3" /> 三</label>
-                      <label><input type="checkbox" name="daysOfWeek" value="4" /> 四</label>
-                      <label><input type="checkbox" name="daysOfWeek" value="5" /> 五</label>
-                      <label><input type="checkbox" name="daysOfWeek" value="6" /> 六</label>
-                    </div>
-                  </fieldset>
-                  <label>
-                    預定上車
-                    <input name="scheduledPickup" type="time" value="09:00" />
-                  </label>
-                  <label>
-                    預定送達
-                    <input name="scheduledDropoff" type="time" value="09:30" />
-                  </label>
-                  <label class="full">
-                    上車地址
-                    <input name="pickupAddress" />
-                  </label>
-                  <label class="full">
-                    目的地
-                    <input name="destinationAddress" />
-                  </label>
-                  <label class="full">
-                    服務項目
-                    <input name="purpose" placeholder="日照接送、復健門診、據點活動..." />
-                  </label>
-                  <label class="full">
-                    特殊需求
-                    <textarea name="specialRequirements" rows="2" placeholder="輪椅、陪同、須提前通知等"></textarea>
-                  </label>
-                  <div class="form-actions full">
-                    <button class="primary-btn" type="submit" id="scheduleSubmitBtn">＋ 新增排程</button>
-                    <button class="ghost-btn" type="button" id="scheduleCancelBtn">清除</button>
-                  </div>
-                </form>
-              </section>
-            </div>
-
-            <section class="work-section compact-section schedule-override-panel" id="scheduleOverridePanel" hidden>
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow" id="scheduleOverrideMode">例外變更</p>
-                  <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">rule</span>某日特殊需求</h3>
-                </div>
-              </div>
-              <form class="case-form" id="scheduleOverrideForm">
-                <input type="hidden" name="scheduleId" />
-                <label>
-                  變更日期
-                  <input name="serviceDate" type="date" />
-                </label>
-                <label>
-                  變更司機
-                  <select name="overrideDriverId" id="scheduleOverrideDriverSelect"></select>
-                </label>
-                <label>
-                  新上車時間
-                  <input name="overridePickupTime" type="time" />
-                </label>
-                <label>
-                  新送達時間
-                  <input name="overrideDropoffTime" type="time" />
-                </label>
-                <label class="full">
-                  新目的地
-                  <input name="overrideDestinationAddress" />
-                </label>
-                <label class="full">
-                  新服務項目
-                  <input name="overridePurpose" />
-                </label>
-                <label class="full">
-                  特殊需求/備註
-                  <textarea name="specialRequirements" rows="2"></textarea>
-                </label>
-                <label class="check-row full">
-                  <input name="cancelService" type="checkbox" />
-                  <span>取消此日排程</span>
-                </label>
-                <div class="form-actions full">
-                  <button class="primary-btn" type="submit" id="scheduleOverrideSubmitBtn">＋ 儲存例外</button>
-                  <button class="ghost-btn" type="button" id="scheduleOverrideCancelBtn">清除</button>
-                </div>
-              </form>
-            </section>
-          </section>
         </div>
 
         <aside class="dispatch-side">
@@ -359,14 +233,17 @@
           <div class="case-list" id="caseList"></div>
         </section>
 
-        <section class="work-section compact-section case-form-panel" id="caseFormPanel" hidden>
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow" id="caseFormMode">新增個案</p>
-              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">assignment</span>個案資料</h3>
+        <section class="modal-overlay" id="caseFormPanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">assignment</span>
+                <span id="caseFormMode">新增個案</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="caseFormCloseBtn" aria-label="關閉視窗">close</button>
             </div>
-          </div>
-          <form class="case-form" id="caseForm">
+            <div class="modal-body">
+              <form class="case-form" id="caseForm">
             <input type="hidden" name="id" />
             <label>
               個案姓名
@@ -515,6 +392,8 @@
               <button class="ghost-btn" type="button" id="caseCancelBtn">清除</button>
             </div>
           </form>
+            </div>
+          </div>
         </section>
       </div>
     </template>
@@ -536,14 +415,17 @@
           <div class="case-list" id="driverList"></div>
         </section>
 
-        <section class="work-section compact-section case-form-panel" id="driverFormPanel" hidden>
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow" id="driverFormMode">新增司機</p>
-              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">badge</span>司機資料</h3>
+        <section class="modal-overlay" id="driverFormPanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">badge</span>
+                <span id="driverFormMode">新增司機</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="driverFormCloseBtn" aria-label="關閉視窗">close</button>
             </div>
-          </div>
-          <form class="case-form" id="driverForm">
+            <div class="modal-body">
+              <form class="case-form" id="driverForm">
             <input type="hidden" name="id" />
             <label>
               司機姓名
@@ -577,6 +459,8 @@
               <button class="ghost-btn" type="button" id="driverCancelBtn">清除</button>
             </div>
           </form>
+            </div>
+          </div>
         </section>
       </div>
     </template>
@@ -637,6 +521,163 @@
         </div>
         <div class="release-list" id="releaseList"></div>
       </section>
+    </template>
+
+    <template id="schedulesTemplate">
+      <div class="case-workspace" id="scheduleWorkspace">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">管理接送排班</p>
+              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">event_repeat</span>接送排程</h3>
+            </div>
+            <div class="heading-actions">
+              <span class="count-pill" id="scheduleCount"></span>
+              <button class="icon-add-btn material-symbols-outlined" id="openScheduleFormBtn" type="button" aria-label="新增排程">add</button>
+            </div>
+          </div>
+          <div class="schedule-list" id="scheduleList"></div>
+        </section>
+
+        <!-- New schedule modal -->
+        <section class="modal-overlay" id="scheduleFormPanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">event_repeat</span>
+                <span id="scheduleFormMode">新增排程</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="scheduleFormCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body">
+              <form class="case-form" id="scheduleForm">
+                <input type="hidden" name="id" />
+                <label>
+                  個案
+                  <select name="caseId" id="scheduleCaseSelect"></select>
+                </label>
+                <label>
+                  指派司機
+                  <select name="driverId" id="scheduleDriverSelect"></select>
+                </label>
+                <label>
+                  排程類型
+                  <select name="scheduleType" id="scheduleTypeSelect">
+                    <option value="single">單次</option>
+                    <option value="weekly">週期</option>
+                  </select>
+                </label>
+                <label>
+                  單次日期
+                  <input name="serviceDate" type="date" />
+                </label>
+                <label>
+                  起始日期
+                  <input name="startDate" type="date" />
+                </label>
+                <label>
+                  結束日期
+                  <input name="endDate" type="date" />
+                </label>
+                <fieldset class="weekday-fieldset full">
+                  <legend>每週星期</legend>
+                  <div class="weekday-grid">
+                    <label><input type="checkbox" name="daysOfWeek" value="0" /> 日</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="1" /> 一</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="2" /> 二</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="3" /> 三</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="4" /> 四</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="5" /> 五</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="6" /> 六</label>
+                  </div>
+                </fieldset>
+                <label>
+                  預定上車
+                  <input name="scheduledPickup" type="time" value="09:00" />
+                </label>
+                <label>
+                  預定送達
+                  <input name="scheduledDropoff" type="time" value="09:30" />
+                </label>
+                <label class="full">
+                  上車地址
+                  <input name="pickupAddress" />
+                </label>
+                <label class="full">
+                  目的地
+                  <input name="destinationAddress" />
+                </label>
+                <label class="full">
+                  服務項目
+                  <input name="purpose" placeholder="日照接送、復健門診、據點活動..." />
+                </label>
+                <label class="full">
+                  特殊需求
+                  <textarea name="specialRequirements" rows="2" placeholder="輪椅、陪同、須提前通知等"></textarea>
+                </label>
+                <div class="form-actions full">
+                  <button class="primary-btn" type="submit" id="scheduleSubmitBtn">＋ 新增排程</button>
+                  <button class="ghost-btn" type="button" id="scheduleCancelBtn">清除</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- Schedule override modal -->
+        <section class="modal-overlay" id="scheduleOverridePanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">rule</span>
+                <span id="scheduleOverrideMode">例外變更</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="scheduleOverrideCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body">
+              <form class="case-form" id="scheduleOverrideForm">
+                <input type="hidden" name="scheduleId" />
+                <label>
+                  變更日期
+                  <input name="serviceDate" type="date" />
+                </label>
+                <label>
+                  變更司機
+                  <select name="overrideDriverId" id="scheduleOverrideDriverSelect"></select>
+                </label>
+                <label>
+                  新上車時間
+                  <input name="overridePickupTime" type="time" />
+                </label>
+                <label>
+                  新送達時間
+                  <input name="overrideDropoffTime" type="time" />
+                </label>
+                <label class="full">
+                  新目的地
+                  <input name="overrideDestinationAddress" />
+                </label>
+                <label class="full">
+                  新服務項目
+                  <input name="overridePurpose" />
+                </label>
+                <label class="full">
+                  特殊需求/備註
+                  <textarea name="specialRequirements" rows="2"></textarea>
+                </label>
+                <label class="check-row full">
+                  <input name="cancelService" type="checkbox" />
+                  <span>取消此日排程</span>
+                </label>
+                <div class="form-actions full">
+                  <button class="primary-btn" type="submit" id="scheduleOverrideSubmitBtn">＋ 儲存例外</button>
+                  <button class="ghost-btn" type="button" id="scheduleOverrideCancelBtn">清除</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </div>
     </template>
 
     <script src="./app.js" defer></script>

@@ -4,7 +4,13 @@ const COORDINATOR_PASSCODE_KEY = "ltc-coordinator-passcode";
 const FONT_SCALE_KEY = "ltc-font-scale";
 const SERVICE_DATE_KEY = "ltc-service-date";
 const COORDINATOR_PASSCODE = "2468";
-const protectedViews = new Set(["dashboard", "cases", "drivers", "settings", "releases"]);
+const protectedViews = new Set(["dashboard", "cases", "drivers", "settings", "releases", "schedules"]);
+let notifications = [];
+try {
+  notifications = JSON.parse(localStorage.getItem("ltc-notifications") || "[]");
+} catch (e) {
+  notifications = [];
+}
 const coordinatorActions = new Set([
   "assign_driver",
   "create_case",
@@ -1058,7 +1064,14 @@ function render() {
   if (visibleView === "driver") renderDriver();
   if (visibleView === "settings") renderSettings();
   if (visibleView === "releases") renderReleases();
+  if (visibleView === "schedules") renderSchedules();
   renderFlash();
+  updateNotificationCenter();
+}
+
+function renderSchedules(host = document.getElementById("appView")) {
+  host.replaceChildren(document.getElementById("schedulesTemplate").content.cloneNode(true));
+  renderScheduleManager();
 }
 
 function refreshCases() {
@@ -1067,6 +1080,99 @@ function refreshCases() {
 
 function refreshDrivers() {
   renderDrivers();
+}
+
+function addNotification(text, success = true) {
+  const item = {
+    id: uid("notif"),
+    text,
+    success,
+    timestamp: new Date().toISOString(),
+    read: false,
+  };
+  notifications.unshift(item);
+  if (notifications.length > 50) {
+    notifications = notifications.slice(0, 50);
+  }
+  try {
+    localStorage.setItem("ltc-notifications", JSON.stringify(notifications));
+  } catch (e) {
+    // Ignore storage quota errors
+  }
+  setFlash(text, success ? "success" : "error");
+  updateNotificationCenter();
+}
+
+function updateNotificationCenter() {
+  const badge = document.getElementById("notificationBadge");
+  const list = document.getElementById("notificationList");
+  if (!badge || !list) return;
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  badge.textContent = unreadCount;
+  badge.hidden = unreadCount === 0;
+
+  if (notifications.length === 0) {
+    list.innerHTML = '<div class="empty-state">尚無系統通知紀錄。</div>';
+    return;
+  }
+
+  list.innerHTML = notifications
+    .map((n) => {
+      const timeStr = new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const statusIcon = n.success ? "check_circle" : "cancel";
+      const itemClass = n.success ? "success" : "failure";
+      return `
+        <div class="notification-item ${itemClass} ${n.read ? "read" : ""}" data-notification-id="${escapeHTML(n.id)}">
+          <span class="material-symbols-outlined notification-item-icon" aria-hidden="true">${statusIcon}</span>
+          <div class="notification-item-content">
+            <p class="notification-item-text">${escapeHTML(n.text)}</p>
+            <span class="notification-item-time">${timeStr}</span>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function initNotificationCenter() {
+  const bellBtn = document.getElementById("notificationBellBtn");
+  const dropdown = document.getElementById("notificationDropdown");
+  const clearBtn = document.getElementById("clearAllNotificationsBtn");
+
+  if (!bellBtn || !dropdown || !clearBtn) return;
+
+  bellBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isHidden = dropdown.hidden;
+    dropdown.hidden = !isHidden;
+
+    if (isHidden) {
+      notifications.forEach((n) => {
+        n.read = true;
+      });
+      try {
+        localStorage.setItem("ltc-notifications", JSON.stringify(notifications));
+      } catch (err) {}
+      updateNotificationCenter();
+    }
+  });
+
+  clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    notifications = [];
+    try {
+      localStorage.setItem("ltc-notifications", JSON.stringify(notifications));
+    } catch (err) {}
+    updateNotificationCenter();
+    dropdown.hidden = true;
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!dropdown.hidden && !dropdown.contains(e.target) && e.target !== bellBtn && !bellBtn.contains(e.target)) {
+      dropdown.hidden = true;
+    }
+  });
 }
 
 function setFlash(message, tone = "success", scope = "global") {
@@ -1137,6 +1243,7 @@ function logoutCoordinator() {
   sessionStorage.removeItem(COORDINATOR_SESSION_KEY);
   sessionStorage.removeItem(COORDINATOR_PASSCODE_KEY);
   activeView = "home";
+  addNotification("承辦人已登出", true);
   render();
 }
 
@@ -1151,6 +1258,7 @@ function renderCoordinatorGate() {
     const passcode = String(new FormData(form).get("passcode") || "").trim();
     if (passcode !== COORDINATOR_PASSCODE) {
       message.textContent = "密碼不正確，請確認後再試一次。";
+      addNotification("承辦人登入失敗：密碼錯誤", false);
       return;
     }
 
@@ -1159,6 +1267,7 @@ function renderCoordinatorGate() {
     sessionStorage.setItem(COORDINATOR_SESSION_KEY, "true");
     sessionStorage.setItem(COORDINATOR_PASSCODE_KEY, passcode);
     activeView = pendingProtectedView || "dashboard";
+    addNotification("承辦人登入成功", true);
     render();
   });
 
@@ -1246,8 +1355,6 @@ function renderDashboard() {
     saveState();
     renderDashboard();
   });
-
-  renderScheduleManager();
 }
 
 function scheduleDaysText(schedule) {
@@ -1451,14 +1558,14 @@ function renderScheduleManager() {
     editingScheduleId = "";
     scheduleFormOpen = true;
     selectedScheduleId = "";
-    renderDashboard();
+    refreshSchedulesView();
   });
 
   document.getElementById("scheduleForm").addEventListener("submit", handleScheduleSubmit);
   document.getElementById("scheduleCancelBtn").addEventListener("click", () => {
     editingScheduleId = "";
     scheduleFormOpen = false;
-    renderDashboard();
+    refreshSchedulesView();
   });
   document.getElementById("scheduleTypeSelect").addEventListener("change", updateScheduleFormMode);
   document.getElementById("scheduleList").addEventListener("click", handleScheduleAction);
@@ -1466,8 +1573,22 @@ function renderScheduleManager() {
   document.getElementById("scheduleOverrideCancelBtn").addEventListener("click", () => {
     scheduleOverrideOpen = false;
     selectedScheduleId = "";
-    renderDashboard();
+    refreshSchedulesView();
   });
+
+  const scheduleFormCloseBtn = document.getElementById("scheduleFormCloseBtn");
+  if (scheduleFormCloseBtn) {
+    scheduleFormCloseBtn.addEventListener("click", () => {
+      document.getElementById("scheduleCancelBtn").click();
+    });
+  }
+
+  const scheduleOverrideCloseBtn = document.getElementById("scheduleOverrideCloseBtn");
+  if (scheduleOverrideCloseBtn) {
+    scheduleOverrideCloseBtn.addEventListener("click", () => {
+      document.getElementById("scheduleOverrideCancelBtn").click();
+    });
+  }
 }
 
 function scheduleFormPayload(form) {
@@ -1511,7 +1632,7 @@ async function handleScheduleSubmit(event) {
   const nextScheduleId = editingId || uid("sch");
   const duplicate = validateSchedulePayload(schedule);
   if (duplicate) {
-    setFlash(duplicate, "error", "dashboard");
+    addNotification(`排程儲存失敗：${duplicate}`, false);
     return;
   }
 
@@ -1524,10 +1645,10 @@ async function handleScheduleSubmit(event) {
       editingScheduleId = "";
       scheduleFormOpen = false;
       selectedScheduleId = nextScheduleId;
-      setFlash(`${editingId ? "已更新" : "已新增"}排程`, "success", "dashboard");
+      addNotification(`${editingId ? "已更新" : "已新增"}排程成功`, true);
       refreshDashboardAfterScheduleChange();
     } catch (error) {
-      setFlash(`排程儲存失敗：${error.message}`, "error", "dashboard");
+      addNotification(`排程儲存失敗：${error.message}`, false);
     }
     return;
   }
@@ -1546,8 +1667,16 @@ async function handleScheduleSubmit(event) {
   selectedScheduleId = nextSchedule.id;
   syncLocalSchedulesForDate(state.serviceDate);
   saveState();
-  setFlash(`${editingId ? "已更新" : "已新增"}排程`, "success", "dashboard");
-  renderDashboard();
+  addNotification(`${editingId ? "已更新" : "已新增"}排程成功`, true);
+  refreshSchedulesView();
+}
+
+function refreshSchedulesView() {
+  if (activeView === "schedules") {
+    renderSchedules();
+  } else {
+    renderDashboard();
+  }
 }
 
 function refreshDashboardAfterScheduleChange() {
@@ -1555,7 +1684,7 @@ function refreshDashboardAfterScheduleChange() {
     syncLocalSchedulesForDate(state.serviceDate);
     saveState();
   }
-  renderDashboard();
+  refreshSchedulesView();
 }
 
 function scheduleOverridePayload(form) {
@@ -1578,7 +1707,7 @@ async function handleScheduleOverrideSubmit(event) {
   const form = new FormData(event.currentTarget);
   const override = scheduleOverridePayload(form);
   if (!override.scheduleId || !override.serviceDate) {
-    setFlash("請先選擇排程與日期。", "error", "dashboard");
+    addNotification("例外變更失敗：請先選擇排程與日期。", false);
     return;
   }
 
@@ -1591,10 +1720,10 @@ async function handleScheduleOverrideSubmit(event) {
       });
       selectedScheduleId = override.scheduleId;
       scheduleOverrideOpen = true;
-      setFlash("已儲存例外變更", "success", "dashboard");
+      addNotification("已儲存例外變更", true);
       refreshDashboardAfterScheduleChange();
     } catch (error) {
-      setFlash(`例外變更失敗：${error.message}`, "error", "dashboard");
+      addNotification(`例外變更失敗：${error.message}`, false);
     }
     return;
   }
@@ -1617,8 +1746,8 @@ async function handleScheduleOverrideSubmit(event) {
   scheduleOverrideOpen = true;
   syncLocalSchedulesForDate(state.serviceDate);
   saveState();
-  setFlash("已儲存例外變更", "success", "dashboard");
-  renderDashboard();
+  addNotification("已儲存例外變更", true);
+  refreshSchedulesView();
 }
 
 async function handleScheduleAction(event) {
@@ -1631,7 +1760,7 @@ async function handleScheduleAction(event) {
     editingScheduleId = "";
     scheduleFormOpen = false;
     scheduleOverrideOpen = Boolean(selectedScheduleId);
-    renderDashboard();
+    refreshSchedulesView();
     return;
   }
 
@@ -1643,26 +1772,31 @@ async function handleScheduleAction(event) {
     editingScheduleId = schedule.id;
     scheduleFormOpen = true;
     scheduleOverrideOpen = false;
-    renderDashboard();
+    refreshSchedulesView();
     return;
   }
 
   if (button.dataset.scheduleAction === "override") {
     scheduleOverrideOpen = true;
-    renderDashboard();
+    refreshSchedulesView();
     return;
   }
 
   if (button.dataset.scheduleAction === "toggle") {
     const nextStatus = schedule.status === "active" ? "paused" : "active";
     if (dataMode === "supabase") {
-      await apiAction("toggle_schedule", {
-        scheduleId: schedule.id,
-        status: nextStatus,
-        endDate: nextStatus === "active" ? "" : schedule.endDate || "",
-        serviceDate: state.serviceDate,
-      });
-      refreshDashboardAfterScheduleChange();
+      try {
+        await apiAction("toggle_schedule", {
+          scheduleId: schedule.id,
+          status: nextStatus,
+          endDate: nextStatus === "active" ? "" : schedule.endDate || "",
+          serviceDate: state.serviceDate,
+        });
+        addNotification(`排程狀態已切換為 ${nextStatus === "active" ? "啟用中" : "已暫停"}`, true);
+        refreshDashboardAfterScheduleChange();
+      } catch (error) {
+        addNotification(`排程狀態切換失敗：${error.message}`, false);
+      }
       return;
     }
     schedule.status = nextStatus;
@@ -1672,7 +1806,8 @@ async function handleScheduleAction(event) {
     }
     syncLocalSchedulesForDate(state.serviceDate);
     saveState();
-    renderDashboard();
+    addNotification(`排程狀態已切換為 ${nextStatus === "active" ? "啟用中" : "已暫停"}`, true);
+    refreshSchedulesView();
     return;
   }
 
@@ -1680,25 +1815,36 @@ async function handleScheduleAction(event) {
     if (!window.confirm(`確定提前停止 ${getCase(schedule.caseId)?.name || "這筆排程"}？`)) return;
     const nextEndDate = state.serviceDate || todayKey();
     if (dataMode === "supabase") {
-      await apiAction("toggle_schedule", { scheduleId: schedule.id, status: "stopped", endDate: nextEndDate, serviceDate: state.serviceDate });
-      refreshDashboardAfterScheduleChange();
+      try {
+        await apiAction("toggle_schedule", { scheduleId: schedule.id, status: "stopped", endDate: nextEndDate, serviceDate: state.serviceDate });
+        addNotification("排程已提前停止", true);
+        refreshDashboardAfterScheduleChange();
+      } catch (error) {
+        addNotification(`排程提前停止失敗：${error.message}`, false);
+      }
       return;
     }
     schedule.status = "stopped";
     schedule.endDate = nextEndDate;
     syncLocalSchedulesForDate(state.serviceDate);
     saveState();
-    renderDashboard();
+    addNotification("排程已提前停止", true);
+    refreshSchedulesView();
     return;
   }
 
   if (button.dataset.scheduleAction === "delete") {
     if (!window.confirm("確定刪除這筆排程？")) return;
     if (dataMode === "supabase") {
-      await apiAction("delete_schedule", { scheduleId: schedule.id, serviceDate: state.serviceDate });
-      selectedScheduleId = "";
-      scheduleOverrideOpen = false;
-      refreshDashboardAfterScheduleChange();
+      try {
+        await apiAction("delete_schedule", { scheduleId: schedule.id, serviceDate: state.serviceDate });
+        selectedScheduleId = "";
+        scheduleOverrideOpen = false;
+        addNotification("排程已刪除", true);
+        refreshDashboardAfterScheduleChange();
+      } catch (error) {
+        addNotification(`排程刪除失敗：${error.message}`, false);
+      }
       return;
     }
     state.schedules = state.schedules.filter((item) => item.id !== schedule.id);
@@ -1706,7 +1852,8 @@ async function handleScheduleAction(event) {
     selectedScheduleId = "";
     scheduleOverrideOpen = false;
     saveState();
-    renderDashboard();
+    addNotification("排程已刪除", true);
+    refreshSchedulesView();
   }
 }
 
@@ -2194,6 +2341,7 @@ function downloadSpreadsheet(filename, rows) {
 
 function exportReimbursementExcel() {
   downloadSpreadsheet(`社區交通車核銷清冊_${state.serviceDate}.xls`, reimbursementRows());
+  addNotification(`已成功匯出核銷清冊 Excel (${state.serviceDate})`, true);
 }
 
 function renderRideRow(trip) {
@@ -2361,6 +2509,12 @@ function renderCases(host = document.getElementById("appView")) {
     refreshCases();
   });
   document.getElementById("caseList").addEventListener("click", handleCaseAction);
+  const closeBtn = document.getElementById("caseFormCloseBtn");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      document.getElementById("caseCancelBtn").click();
+    });
+  }
   if (editingCaseId) fillCaseForm(editingCaseId);
   renderFlash();
 }
@@ -2515,6 +2669,7 @@ async function handleCaseSubmit(event) {
   const birthDate = normalizeBirthDate(String(form.get("birthDate") || ""));
   if (form.get("birthDate") && !birthDate) {
     setFlash("出生日期請填西元年 4 碼，例如 1943-04-12。", "error", "cases");
+    addNotification("個案儲存失敗：出生日期格式錯誤", false);
     return;
   }
   const emergencyContacts = parseEmergencyContacts(String(form.get("emergencyContactsText") || ""), primaryEmergency);
@@ -2554,6 +2709,7 @@ async function handleCaseSubmit(event) {
   if (duplicate) {
     dataMessage = duplicate;
     setFlash(duplicate, "error", "cases");
+    addNotification(`個案儲存失敗：${duplicate}`, false);
     refreshCases();
     return;
   }
@@ -2576,10 +2732,12 @@ async function handleCaseSubmit(event) {
       selectedCaseId = savedCase?.id || "";
       caseFormOpen = false;
       setFlash(`${editingId ? "已更新" : "已新增"}個案：${savedCase?.name || newCase.name}`, "success", "cases");
+      addNotification(`${editingId ? "已更新" : "已新增"}個案「${savedCase?.name || newCase.name}」成功`, true);
       refreshCases();
     } catch (error) {
       dataMessage = `個案資料儲存失敗：${error.message}`;
       setFlash(dataMessage, "error", "cases");
+      addNotification(`個案「${newCase.name}」儲存失敗：${error.message}`, false);
       refreshCases();
     }
     return;
@@ -2592,6 +2750,7 @@ async function handleCaseSubmit(event) {
     caseFormOpen = false;
     saveState();
     setFlash(`已更新個案：${newCase.name}`, "success", "cases");
+    addNotification(`已更新個案「${newCase.name}」成功`, true);
     refreshCases();
     return;
   }
@@ -2622,6 +2781,7 @@ async function handleCaseSubmit(event) {
   selectedCaseId = newCase.id;
   caseFormOpen = false;
   setFlash(`已新增個案：${newCase.name}`, "success", "cases");
+  addNotification(`已新增個案「${newCase.name}」成功`, true);
   refreshCases();
 }
 
@@ -2657,6 +2817,7 @@ async function handleCaseAction(event) {
     try {
       if (button.dataset.action === "toggle") {
         await apiAction("toggle_case", { caseId: person.id, active: !person.active });
+        addNotification(`個案「${person.name}」狀態已切換為 ${!person.active ? "服務中" : "已停用"}`, true);
       }
 
       if (button.dataset.action === "trip") {
@@ -2664,17 +2825,20 @@ async function handleCaseAction(event) {
           caseId: person.id,
           driverId: state.drivers[0]?.id ?? "",
         });
+        addNotification(`已為個案「${person.name}」新增今日接送`, true);
       }
 
       if (button.dataset.action === "delete") {
         await apiAction("delete_case", { caseId: person.id });
         selectedCaseId = "";
+        addNotification(`個案「${person.name}」已刪除`, true);
       }
       editingCaseId = "";
       caseFormOpen = false;
       refreshCases();
     } catch (error) {
       dataMessage = `更新失敗：${error.message}`;
+      addNotification(`個案操作失敗：${error.message}`, false);
       refreshCases();
     }
     return;
@@ -2682,6 +2846,7 @@ async function handleCaseAction(event) {
 
   if (button.dataset.action === "toggle") {
     person.active = !person.active;
+    addNotification(`個案「${person.name}」狀態已切換為 ${person.active ? "服務中" : "已停用"}`, true);
   }
 
   if (button.dataset.action === "trip") {
@@ -2701,6 +2866,7 @@ async function handleCaseAction(event) {
       purpose: "臨時接送",
       status: "scheduled",
     });
+    addNotification(`已為個案「${person.name}」新增今日接送`, true);
   }
 
   if (button.dataset.action === "delete") {
@@ -2715,6 +2881,7 @@ async function handleCaseAction(event) {
     caseFormOpen = false;
     scheduleFormOpen = false;
     scheduleOverrideOpen = false;
+    addNotification(`個案「${person.name}」已刪除`, true);
   }
 
   saveState();
@@ -2749,6 +2916,12 @@ function renderDrivers(host = document.getElementById("appView")) {
     refreshDrivers();
   });
   document.getElementById("driverList").addEventListener("click", handleDriverManageAction);
+  const closeBtn = document.getElementById("driverFormCloseBtn");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      document.getElementById("driverCancelBtn").click();
+    });
+  }
   if (editingDriverId) fillDriverForm(editingDriverId);
   renderFlash();
 }
@@ -2895,6 +3068,7 @@ async function handleDriverSubmit(event) {
   if (duplicate) {
     dataMessage = duplicate;
     setFlash(duplicate, "error", "drivers");
+    addNotification(`司機儲存失敗：${duplicate}`, false);
     refreshDrivers();
     return;
   }
@@ -2902,6 +3076,7 @@ async function handleDriverSubmit(event) {
   if (!/^\d{6}$/.test(driver.pin)) {
     dataMessage = "司機 PIN 必須是 6 位數字。";
     setFlash(dataMessage, "error", "drivers");
+    addNotification("司機儲存失敗：PIN 碼格式錯誤", false);
     refreshDrivers();
     return;
   }
@@ -2914,10 +3089,12 @@ async function handleDriverSubmit(event) {
       selectedDriverId = savedDriver?.id || "";
       driverFormOpen = false;
       setFlash(`${editingId ? "已更新" : "已新增"}司機：${savedDriver?.name || driver.name}`, "success", "drivers");
+      addNotification(`${editingId ? "已更新" : "已新增"}司機「${savedDriver?.name || driver.name}」成功`, true);
       refreshDrivers();
     } catch (error) {
       dataMessage = `司機資料儲存失敗：${error.message}`;
       setFlash(dataMessage, "error", "drivers");
+      addNotification(`司機「${driver.name}」儲存失敗：${error.message}`, false);
       refreshDrivers();
     }
     return;
@@ -2925,6 +3102,7 @@ async function handleDriverSubmit(event) {
 
   if (editingId) {
     state.drivers = state.drivers.map((item) => (item.id === editingId ? { ...item, ...driver } : item));
+    addNotification(`已更新司機「${driver.name}」成功`, true);
   } else {
     state.drivers.push({ ...driver, homeLocation: fallbackLocation(driver.id) });
     state.driverLocations[driver.id] = {
@@ -2935,6 +3113,7 @@ async function handleDriverSubmit(event) {
       eventType: "heartbeat",
       tripId: "",
     };
+    addNotification(`已新增司機「${driver.name}」成功`, true);
   }
   editingDriverId = "";
   selectedDriverId = driver.id;
@@ -2975,16 +3154,19 @@ async function handleDriverManageAction(event) {
     try {
       if (button.dataset.action === "toggle") {
         await apiAction("toggle_driver", { driverId: driver.id, active: !driver.active });
+        addNotification(`司機「${driver.name}」狀態已切換為 ${!driver.active ? "服務中" : "已停用"}`, true);
       }
       if (button.dataset.action === "delete") {
         await apiAction("delete_driver", { driverId: driver.id });
         selectedDriverId = "";
+        addNotification(`司機「${driver.name}」已刪除`, true);
       }
       editingDriverId = "";
       driverFormOpen = false;
       refreshDrivers();
     } catch (error) {
       dataMessage = `司機資料更新失敗：${error.message}`;
+      addNotification(`司機操作失敗：${error.message}`, false);
       refreshDrivers();
     }
     return;
@@ -2992,6 +3174,7 @@ async function handleDriverManageAction(event) {
 
   if (button.dataset.action === "toggle") {
     driver.active = !driver.active;
+    addNotification(`司機「${driver.name}」狀態已切換為 ${driver.active ? "服務中" : "已停用"}`, true);
   }
   if (button.dataset.action === "delete") {
     const relatedScheduleIds = new Set(state.schedules.filter((schedule) => schedule.driverId === driver.id).map((schedule) => schedule.id));
@@ -3002,6 +3185,7 @@ async function handleDriverManageAction(event) {
     state.drivers = state.drivers.filter((item) => item.id !== driver.id);
     selectedScheduleId = "";
     selectedDriverId = "";
+    addNotification(`司機「${driver.name}」已刪除`, true);
   }
   editingDriverId = "";
   driverFormOpen = false;
@@ -3478,6 +3662,7 @@ async function init() {
 
   document.getElementById("coordinatorLogoutBtn").addEventListener("click", logoutCoordinator);
 
+  initNotificationCenter();
   setupPullToRefresh();
   updateClock();
   setInterval(updateClock, 15_000);
