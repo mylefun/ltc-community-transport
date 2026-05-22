@@ -185,6 +185,17 @@ function addMinutes(minutes) {
   return localTime(new Date(Date.now() + minutes * 60_000));
 }
 
+function normalizeBirthDate(value) {
+  const raw = String(value || "").trim().replaceAll("/", "-");
+  if (!raw) return "";
+  const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return "";
+  const year = match[1];
+  const month = String(Number(match[2])).padStart(2, "0");
+  const day = String(Number(match[3])).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function uid(prefix) {
   if (window.crypto?.randomUUID) {
     return `${prefix}_${window.crypto.randomUUID()}`;
@@ -1682,6 +1693,11 @@ async function handleCaseSubmit(event) {
     relation: String(form.get("emergencyRelation")).trim(),
     phone: String(form.get("emergencyPhone")).trim(),
   };
+  const birthDate = normalizeBirthDate(String(form.get("birthDate") || ""));
+  if (form.get("birthDate") && !birthDate) {
+    setFlash("出生日期請填西元年 4 碼，例如 1943-04-12。", "error", "cases");
+    return;
+  }
   const emergencyContacts = parseEmergencyContacts(String(form.get("emergencyContactsText") || ""), primaryEmergency);
   const destinations = parseDestinations(String(form.get("destinationsText") || ""), String(form.get("destinationAddress")).trim());
   const newCase = {
@@ -1690,7 +1706,7 @@ async function handleCaseSubmit(event) {
     name: String(form.get("name")).trim(),
     identityNo: String(form.get("identityNo")).trim(),
     gender: String(form.get("gender")).trim(),
-    birthDate: String(form.get("birthDate")).trim(),
+    birthDate,
     welfareStatus: String(form.get("welfareStatus")).trim(),
     phone: String(form.get("phone")).trim(),
     landlinePhone: String(form.get("landlinePhone")).trim(),
