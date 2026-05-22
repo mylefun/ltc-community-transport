@@ -1765,6 +1765,14 @@ function initOrUpdateLeafletMap() {
         zoomLabel.textContent = `${scalePct}%`;
       }
     });
+
+    // Automatically adjust map rendering size whenever its container resizes (e.g. during sidebar toggle animations)
+    const resizeObserver = new ResizeObserver(() => {
+      if (leafletMapInstance) {
+        leafletMapInstance.invalidateSize();
+      }
+    });
+    resizeObserver.observe(leafletMapCanvas);
   }
 
   // Clear container and append the map canvas

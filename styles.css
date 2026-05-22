@@ -379,6 +379,8 @@ button {
   min-width: 0;
   padding: 0;
   transition: transform 0.18s ease;
+  container-type: inline-size;
+  container-name: main;
 }
 
 body.pulling .main-area,
@@ -2405,7 +2407,7 @@ body[data-view="driver"] .task-actions button {
 
 }
 
-@media (max-width: 1180px) {
+@container main (max-width: 900px) {
   .summary-grid {
     margin-inline: -2px;
   }
@@ -2585,6 +2587,9 @@ body[data-view="driver"] .task-actions button {
     padding: 16px 16px 104px;
   }
 
+}
+
+@container main (max-width: 680px) {
   .entry-grid {
     grid-template-columns: 1fr;
   }
@@ -2613,7 +2618,9 @@ body[data-view="driver"] .task-actions button {
   .topbar-brand strong {
     font-size: 18px;
   }
+}
 
+@container main (max-width: 480px) {
   .filter-row,
   .inline-fields {
     flex-direction: column;
