@@ -10,6 +10,12 @@ const coordinatorActions = new Set([
   "toggle_driver",
   "delete_driver",
   "create_trip",
+  "create_schedule",
+  "update_schedule",
+  "delete_schedule",
+  "toggle_schedule",
+  "create_schedule_override",
+  "delete_schedule_override",
 ]);
 
 function coordinatorPasscode() {
@@ -272,23 +278,26 @@ function ridePayload(serviceDate, person, driver, pickup, dropoff, purpose, over
   };
 }
 
-async function readState() {
+async function readState(serviceDate = todayKey()) {
   if (process.env.DEMO_SEED_ENABLED === "true") {
     await seedIfEmpty();
   }
 
-  const serviceDate = todayKey();
-  const [drivers, cases, trips, locations] = await Promise.all([
+  const [drivers, cases, schedules, locations] = await Promise.all([
     supabase("drivers?select=*&order=display_name.asc"),
     supabase("cases?select=*&order=case_no.asc"),
-    supabase(`daily_rides?select=*&service_date=eq.${serviceDate}&order=scheduled_pickup.asc`),
+    supabase("schedules?select=*&order=created_at.asc"),
     supabase("driver_locations?select=*"),
   ]);
+
+  await syncSchedulesForDate(serviceDate, schedules, cases, drivers);
+  const trips = await supabase(`daily_rides?select=*&service_date=eq.${serviceDate}&order=scheduled_pickup.asc`);
 
   return {
     serviceDate,
     drivers: drivers.map(mapDriver),
     cases: cases.map(mapCase),
+    schedules: schedules.map(mapSchedule),
     trips: trips.map(mapTrip),
     driverLocations: mapLocations(locations),
     events: [],
@@ -348,6 +357,7 @@ function mapTrip(trip) {
     serviceDate: trip.service_date,
     caseId: trip.case_id,
     driverId: trip.driver_id,
+    scheduleId: trip.schedule_id || "",
     scheduledPickup: timeOnly(trip.scheduled_pickup),
     scheduledDropoff: timeOnly(trip.scheduled_dropoff),
     pickupTime: trip.pickup_at ? localTime(new Date(trip.pickup_at)) : "",
@@ -360,6 +370,103 @@ function mapTrip(trip) {
     purpose: trip.purpose || "",
     status: trip.status,
   };
+}
+
+function mapSchedule(schedule) {
+  return {
+    id: schedule.id,
+    caseId: schedule.case_id,
+    driverId: schedule.driver_id,
+    scheduleType: schedule.schedule_type || "single",
+    serviceDate: schedule.service_date || "",
+    startDate: schedule.start_date || "",
+    endDate: schedule.end_date || "",
+    daysOfWeek: Array.isArray(schedule.days_of_week) ? schedule.days_of_week.map(Number).filter((day) => Number.isInteger(day)).sort((a, b) => a - b) : [],
+    scheduledPickup: timeOnly(schedule.scheduled_pickup),
+    scheduledDropoff: timeOnly(schedule.scheduled_dropoff),
+    pickupAddress: schedule.pickup_address || "",
+    destinationAddress: schedule.destination_address || "",
+    purpose: schedule.purpose || "",
+    specialRequirements: schedule.special_requirements || "",
+    status: schedule.status || "active",
+    stopReason: schedule.stop_reason || "",
+    dateOverrides: Array.isArray(schedule.date_overrides)
+      ? schedule.date_overrides.map((item) => ({
+          serviceDate: item.serviceDate || item.service_date || "",
+          overrideDriverId: item.overrideDriverId || item.override_driver_id || "",
+          overridePickupTime: item.overridePickupTime || item.override_pickup_time || "",
+          overrideDropoffTime: item.overrideDropoffTime || item.override_dropoff_time || "",
+          overrideDestinationAddress: item.overrideDestinationAddress || item.override_destination_address || "",
+          overridePurpose: item.overridePurpose || item.override_purpose || "",
+          specialRequirements: item.specialRequirements || item.special_requirements || "",
+          cancelService: Boolean(item.cancelService ?? item.cancel_service ?? false),
+          note: item.note || "",
+        }))
+      : [],
+  };
+}
+
+function scheduleMatchesDate(schedule, serviceDate) {
+  if (!schedule || !serviceDate) return false;
+  if (schedule.status !== "active") return false;
+  if (schedule.scheduleType === "single") return schedule.serviceDate === serviceDate;
+  if (schedule.startDate && serviceDate < schedule.startDate) return false;
+  if (schedule.endDate && serviceDate > schedule.endDate) return false;
+  const day = new Date(`${serviceDate}T00:00:00`).getDay();
+  return schedule.daysOfWeek.includes(day);
+}
+
+function scheduleOverrideForDate(schedule, serviceDate) {
+  return schedule.dateOverrides.find((item) => item.serviceDate === serviceDate) || null;
+}
+
+function resolveScheduleRide(schedule, serviceDate, casesById, driversById) {
+  if (!scheduleMatchesDate(schedule, serviceDate)) return null;
+  const override = scheduleOverrideForDate(schedule, serviceDate);
+  if (override?.cancelService) return null;
+  const caseRow = casesById[schedule.caseId];
+  if (!caseRow) return null;
+  const driverId = override?.overrideDriverId || schedule.driverId;
+  if (!driversById[driverId]) return null;
+  return {
+    schedule_id: schedule.id,
+    service_date: serviceDate,
+    case_id: schedule.caseId,
+    driver_id: driverId,
+    scheduled_pickup: override?.overridePickupTime || schedule.scheduledPickup,
+    scheduled_dropoff: override?.overrideDropoffTime || schedule.scheduledDropoff || null,
+    pickup_address: schedule.pickupAddress || caseRow.pickup_address,
+    destination_address: override?.overrideDestinationAddress || schedule.destinationAddress || caseRow.default_destination,
+    purpose: override?.overridePurpose || schedule.purpose || "排程接送",
+  };
+}
+
+async function syncSchedulesForDate(serviceDate, schedules, cases, drivers) {
+  const casesById = Object.fromEntries(cases.map((person) => [person.id, person]));
+  const driversById = Object.fromEntries(drivers.map((driver) => [driver.id, driver]));
+  const existing = await supabase(`daily_rides?select=*&service_date=eq.${serviceDate}`);
+  const existingGenerated = existing.filter((ride) => ride.schedule_id);
+  const scheduleRows = schedules.map(mapSchedule);
+  const generated = scheduleRows.map((schedule) => resolveScheduleRide(schedule, serviceDate, casesById, driversById)).filter(Boolean);
+  const activeScheduleIds = new Set(generated.map((ride) => ride.schedule_id));
+
+  const staleIds = existingGenerated
+    .filter((ride) => !activeScheduleIds.has(ride.schedule_id) && !ride.pickup_at && !ride.dropoff_at)
+    .map((ride) => ride.id);
+  if (staleIds.length) {
+    await supabase(`daily_rides?id=in.(${staleIds.map((id) => encodeURIComponent(id)).join(",")})`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+  }
+
+  if (generated.length) {
+    await supabase("daily_rides?on_conflict=schedule_id,service_date", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(generated),
+    });
+  }
 }
 
 function mapLocations(locations) {
@@ -417,6 +524,7 @@ async function handleAction(action, payload = {}) {
           pickup_address: payload.case.pickupAddress,
           destination_address: payload.trip.destinationAddress || payload.case.destinationAddress,
           purpose: "日照接送",
+          schedule_id: null,
         }),
       });
     }
@@ -438,6 +546,10 @@ async function handleAction(action, payload = {}) {
 
   if (action === "delete_case") {
     await supabase(`daily_rides?case_id=eq.${encodeURIComponent(payload.caseId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+    await supabase(`schedules?case_id=eq.${encodeURIComponent(payload.caseId)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
@@ -480,6 +592,10 @@ async function handleAction(action, payload = {}) {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
+    await supabase(`schedules?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
     await supabase(`driver_locations?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
@@ -506,7 +622,95 @@ async function handleAction(action, payload = {}) {
         pickup_address: person[0].pickup_address,
         destination_address: person[0].default_destination,
         purpose: "臨時接送",
+        schedule_id: null,
       }),
+    });
+  }
+
+  if (action === "create_schedule" || action === "update_schedule") {
+    const schedule = payload.schedule || {};
+    const body = {
+      id: schedule.id,
+      case_id: schedule.caseId,
+      driver_id: schedule.driverId,
+      schedule_type: schedule.scheduleType || "single",
+      service_date: schedule.serviceDate || null,
+      start_date: schedule.startDate || null,
+      end_date: schedule.endDate || null,
+      days_of_week: Array.isArray(schedule.daysOfWeek) ? schedule.daysOfWeek : [],
+      scheduled_pickup: schedule.scheduledPickup,
+      scheduled_dropoff: schedule.scheduledDropoff || null,
+      pickup_address: schedule.pickupAddress,
+      destination_address: schedule.destinationAddress,
+      purpose: schedule.purpose || null,
+      special_requirements: schedule.specialRequirements || null,
+      status: schedule.status || "active",
+      stop_reason: schedule.stopReason || null,
+      date_overrides: Array.isArray(schedule.dateOverrides) ? schedule.dateOverrides : [],
+    };
+
+    if (action === "create_schedule") {
+      await supabase("schedules", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(body),
+      });
+    } else {
+      await supabase(`schedules?id=eq.${encodeURIComponent(schedule.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(body),
+      });
+    }
+  }
+
+  if (action === "toggle_schedule") {
+    const patch = { status: payload.status };
+    if (payload.endDate !== undefined) patch.end_date = payload.endDate || null;
+    if (payload.status === "active") patch.stop_reason = null;
+    await supabase(`schedules?id=eq.${encodeURIComponent(payload.scheduleId)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(patch),
+    });
+  }
+
+  if (action === "delete_schedule") {
+    await supabase(`daily_rides?schedule_id=eq.${encodeURIComponent(payload.scheduleId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+    await supabase(`schedules?id=eq.${encodeURIComponent(payload.scheduleId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    });
+  }
+
+  if (action === "create_schedule_override") {
+    const rows = await supabase(`schedules?select=*&id=eq.${encodeURIComponent(payload.scheduleId)}&limit=1`);
+    const schedule = rows[0];
+    if (!schedule) throw new Error("Schedule not found");
+    const overrides = Array.isArray(schedule.date_overrides) ? schedule.date_overrides : [];
+    const nextOverride = payload.override || {};
+    const filtered = overrides.filter((item) => String(item.serviceDate || item.service_date || "") !== String(nextOverride.serviceDate || nextOverride.service_date || ""));
+    filtered.push(nextOverride);
+    await supabase(`schedules?id=eq.${encodeURIComponent(schedule.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ date_overrides: filtered }),
+    });
+  }
+
+  if (action === "delete_schedule_override") {
+    const rows = await supabase(`schedules?select=*&id=eq.${encodeURIComponent(payload.scheduleId)}&limit=1`);
+    const schedule = rows[0];
+    if (!schedule) throw new Error("Schedule not found");
+    const overrides = Array.isArray(schedule.date_overrides) ? schedule.date_overrides : [];
+    const filtered = overrides.filter((item) => String(item.serviceDate || item.service_date || "") !== String(payload.serviceDate || ""));
+    await supabase(`schedules?id=eq.${encodeURIComponent(schedule.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ date_overrides: filtered }),
     });
   }
 
@@ -518,7 +722,7 @@ async function handleAction(action, payload = {}) {
     await markRideEvent("dropoff", payload);
   }
 
-  return readState();
+  return readState(payload.serviceDate || todayKey());
 }
 
 async function findDuplicateCase(person, editingId = "") {
@@ -706,8 +910,10 @@ async function markRideEvent(type, payload) {
 
 export default async function handler(req, res) {
   try {
+    const requestUrl = new URL(req.url, "http://localhost");
+    const serviceDate = requestUrl.searchParams.get("serviceDate") || todayKey();
     if (req.method === "GET") {
-      res.status(200).json({ ok: true, state: await readState() });
+      res.status(200).json({ ok: true, state: await readState(serviceDate) });
       return;
     }
 

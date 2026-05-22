@@ -105,11 +105,58 @@ create unique index if not exists idx_cases_identity_no
   on public.cases(identity_no)
   where identity_no is not null;
 
+create table if not exists public.schedules (
+  id uuid primary key default gen_random_uuid(),
+  case_id uuid not null references public.cases(id) on delete restrict,
+  driver_id uuid not null references public.drivers(id) on delete restrict,
+  schedule_type text not null default 'single' check (schedule_type in ('single', 'weekly')),
+  service_date date,
+  start_date date,
+  end_date date,
+  days_of_week jsonb not null default '[]'::jsonb,
+  scheduled_pickup time not null,
+  scheduled_dropoff time,
+  pickup_address text not null,
+  destination_address text not null,
+  purpose text,
+  special_requirements text,
+  status text not null default 'active' check (status in ('active', 'paused', 'stopped')),
+  stop_reason text,
+  date_overrides jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_schedules_case_date
+  on public.schedules(case_id, service_date);
+
+create index if not exists idx_schedules_driver_date
+  on public.schedules(driver_id, service_date);
+
+alter table public.schedules
+  add column if not exists case_id uuid references public.cases(id) on delete restrict,
+  add column if not exists driver_id uuid references public.drivers(id) on delete restrict,
+  add column if not exists schedule_type text not null default 'single',
+  add column if not exists service_date date,
+  add column if not exists start_date date,
+  add column if not exists end_date date,
+  add column if not exists days_of_week jsonb not null default '[]'::jsonb,
+  add column if not exists scheduled_pickup time,
+  add column if not exists scheduled_dropoff time,
+  add column if not exists pickup_address text,
+  add column if not exists destination_address text,
+  add column if not exists purpose text,
+  add column if not exists special_requirements text,
+  add column if not exists status text not null default 'active',
+  add column if not exists stop_reason text,
+  add column if not exists date_overrides jsonb not null default '[]'::jsonb;
+
 create table if not exists public.daily_rides (
   id uuid primary key default gen_random_uuid(),
   service_date date not null,
   case_id uuid not null references public.cases(id) on delete restrict,
   driver_id uuid not null references public.drivers(id) on delete restrict,
+  schedule_id uuid references public.schedules(id) on delete set null,
   scheduled_pickup time not null,
   scheduled_dropoff time,
   pickup_address text not null,
@@ -129,6 +176,9 @@ create table if not exists public.daily_rides (
     pickup_at is null or dropoff_at is null or dropoff_at >= pickup_at
   )
 );
+
+alter table public.daily_rides
+  add column if not exists schedule_id uuid references public.schedules(id) on delete set null;
 
 create table if not exists public.ride_events (
   id uuid primary key default gen_random_uuid(),
@@ -165,6 +215,10 @@ create index if not exists idx_daily_rides_driver_date
 create index if not exists idx_daily_rides_case_date
   on public.daily_rides(case_id, service_date);
 
+create unique index if not exists idx_daily_rides_schedule_date
+  on public.daily_rides(schedule_id, service_date)
+  where schedule_id is not null;
+
 create index if not exists idx_ride_events_ride
   on public.ride_events(ride_id, occurred_at);
 
@@ -195,6 +249,21 @@ drop trigger if exists trg_cases_touch_updated_at on public.cases;
 create trigger trg_cases_touch_updated_at
 before update on public.cases
 for each row execute function public.touch_updated_at();
+
+create or replace function public.touch_schedule_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_schedules_touch_updated_at on public.schedules;
+create trigger trg_schedules_touch_updated_at
+before update on public.schedules
+for each row execute function public.touch_schedule_updated_at();
 
 create or replace function public.sync_daily_ride_status()
 returns trigger
@@ -257,6 +326,7 @@ $$;
 alter table public.drivers enable row level security;
 alter table public.profiles enable row level security;
 alter table public.cases enable row level security;
+alter table public.schedules enable row level security;
 alter table public.daily_rides enable row level security;
 alter table public.ride_events enable row level security;
 alter table public.driver_locations enable row level security;
@@ -305,6 +375,21 @@ using (public.is_coordinator());
 drop policy if exists "cases_manage_by_coordinator" on public.cases;
 create policy "cases_manage_by_coordinator"
 on public.cases
+for all
+to authenticated
+using (public.is_coordinator())
+with check (public.is_coordinator());
+
+drop policy if exists "schedules_read_for_staff" on public.schedules;
+create policy "schedules_read_for_staff"
+on public.schedules
+for select
+to authenticated
+using (public.is_coordinator());
+
+drop policy if exists "schedules_manage_by_coordinator" on public.schedules;
+create policy "schedules_manage_by_coordinator"
+on public.schedules
 for all
 to authenticated
 using (public.is_coordinator())

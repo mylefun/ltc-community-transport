@@ -2,6 +2,7 @@ const STORAGE_KEY = "ltc-community-transport-v1";
 const COORDINATOR_SESSION_KEY = "ltc-coordinator-unlocked";
 const COORDINATOR_PASSCODE_KEY = "ltc-coordinator-passcode";
 const FONT_SCALE_KEY = "ltc-font-scale";
+const SERVICE_DATE_KEY = "ltc-service-date";
 const COORDINATOR_PASSCODE = "2468";
 const protectedViews = new Set(["dashboard", "cases", "drivers", "settings", "releases"]);
 const coordinatorActions = new Set([
@@ -15,6 +16,12 @@ const coordinatorActions = new Set([
   "toggle_driver",
   "delete_driver",
   "create_trip",
+  "create_schedule",
+  "update_schedule",
+  "delete_schedule",
+  "toggle_schedule",
+  "create_schedule_override",
+  "delete_schedule_override",
 ]);
 
 const statusLabels = {
@@ -28,6 +35,17 @@ const eventLabels = {
   pickup: "接到個案",
   dropoff: "送達目的地",
   heartbeat: "目前位置",
+};
+
+const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+const scheduleStatusLabels = {
+  active: "啟用中",
+  paused: "已暫停",
+  stopped: "已停止",
+};
+const scheduleTypeLabels = {
+  single: "單次",
+  weekly: "週期",
 };
 
 const communitySites = [
@@ -145,6 +163,10 @@ let caseFormOpen = false;
 let editingDriverId = "";
 let selectedDriverId = "";
 let driverFormOpen = false;
+let editingScheduleId = "";
+let selectedScheduleId = "";
+let scheduleFormOpen = false;
+let scheduleOverrideOpen = false;
 let coordinatorPasscode = sessionStorage.getItem(COORDINATOR_PASSCODE_KEY) || "";
 let coordinatorUnlocked = sessionStorage.getItem(COORDINATOR_SESSION_KEY) === "true" && Boolean(coordinatorPasscode);
 let pendingProtectedView = "dashboard";
@@ -333,15 +355,157 @@ function parseDestinations(text, fallback = "") {
   return normalizeDestinations({ destinations: parsed, destinationAddress: fallback });
 }
 
+function normalizeDaysOfWeek(value) {
+  const items = Array.isArray(value) ? value : [];
+  return [...new Set(items.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 0 && item <= 6))].sort(
+    (a, b) => a - b,
+  );
+}
+
+function normalizeScheduleOverrides(value) {
+  return Array.isArray(value)
+    ? value
+        .map((item) => ({
+          serviceDate: String(item.serviceDate || item.service_date || "").trim(),
+          overrideDriverId: String(item.overrideDriverId || item.override_driver_id || "").trim(),
+          overridePickupTime: String(item.overridePickupTime || item.override_pickup_time || "").trim(),
+          overrideDropoffTime: String(item.overrideDropoffTime || item.override_dropoff_time || "").trim(),
+          overrideDestinationAddress: String(item.overrideDestinationAddress || item.override_destination_address || "").trim(),
+          overridePurpose: String(item.overridePurpose || item.override_purpose || "").trim(),
+          specialRequirements: String(item.specialRequirements || item.special_requirements || "").trim(),
+          cancelService: Boolean(item.cancelService ?? item.cancel_service ?? false),
+          note: String(item.note || "").trim(),
+        }))
+        .filter((item) => item.serviceDate)
+    : [];
+}
+
+function getScheduleOverride(schedule, serviceDate) {
+  return (schedule.dateOverrides || []).find((item) => item.serviceDate === serviceDate) || null;
+}
+
+function weekdayIndex(dateString) {
+  if (!dateString) return 0;
+  const date = new Date(`${dateString}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? 0 : date.getDay();
+}
+
+function scheduleMatchesDate(schedule, serviceDate) {
+  if (!schedule || !serviceDate) return false;
+  if (schedule.status !== "active") return false;
+  if (schedule.scheduleType === "single") return schedule.serviceDate === serviceDate;
+
+  if (schedule.startDate && serviceDate < schedule.startDate) return false;
+  if (schedule.endDate && serviceDate > schedule.endDate) return false;
+  return schedule.daysOfWeek.includes(weekdayIndex(serviceDate));
+}
+
+function scheduleSummary(schedule, serviceDate = state.serviceDate) {
+  const datePart =
+    schedule.scheduleType === "single"
+      ? `單次 · ${schedule.serviceDate || "未定"}`
+      : `每週 · ${schedule.daysOfWeek.map((day) => weekdayLabels[day]).join("、") || "未選"}${schedule.endDate ? ` 至 ${schedule.endDate}` : ""}`;
+  const override = getScheduleOverride(schedule, serviceDate);
+  const overrideText = override
+    ? override.cancelService
+      ? `當日已取消`
+      : [
+          override.overridePickupTime ? `上車 ${override.overridePickupTime}` : "",
+          override.overrideDropoffTime ? `送達 ${override.overrideDropoffTime}` : "",
+          override.overrideDestinationAddress ? `目的地已改` : "",
+        ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+  return [datePart, schedule.purpose || "未填項目", overrideText].filter(Boolean).join(" · ");
+}
+
+function scheduleStatusText(schedule) {
+  return scheduleStatusLabels[schedule.status] || schedule.status || "啟用中";
+}
+
+function scheduleEffectiveFields(schedule, serviceDate) {
+  const override = getScheduleOverride(schedule, serviceDate);
+  if (override?.cancelService) return null;
+  return {
+    caseId: schedule.caseId,
+    driverId: override?.overrideDriverId || schedule.driverId,
+    scheduledPickup: override?.overridePickupTime || schedule.scheduledPickup,
+    scheduledDropoff: override?.overrideDropoffTime || schedule.scheduledDropoff,
+    pickupAddress: schedule.pickupAddress || getCase(schedule.caseId)?.pickupAddress || "",
+    destinationAddress: override?.overrideDestinationAddress || schedule.destinationAddress || getCase(schedule.caseId)?.destinationAddress || "",
+    purpose: override?.overridePurpose || schedule.purpose || "排程接送",
+    specialRequirements: override?.specialRequirements || schedule.specialRequirements || "",
+  };
+}
+
+function buildTripFromSchedule(schedule, serviceDate) {
+  const fields = scheduleEffectiveFields(schedule, serviceDate);
+  if (!fields) return null;
+  const caseItem = getCase(fields.caseId);
+  const driverItem = getDriver(fields.driverId);
+  if (!caseItem || !driverItem) return null;
+
+  return {
+    id: uid(`trip_${schedule.id}`),
+    serviceDate,
+    caseId: fields.caseId,
+    driverId: fields.driverId,
+    scheduleId: schedule.id,
+    scheduledPickup: fields.scheduledPickup,
+    scheduledDropoff: fields.scheduledDropoff,
+    pickupTime: "",
+    pickupAt: "",
+    pickupLocation: null,
+    dropoffTime: "",
+    dropoffAt: "",
+    dropoffLocation: null,
+    destinationAddress: fields.destinationAddress,
+    purpose: fields.purpose,
+    status: "scheduled",
+  };
+}
+
+function syncLocalSchedulesForDate(serviceDate = state.serviceDate) {
+  const existingManualTrips = state.trips.filter((trip) => !trip.scheduleId || trip.serviceDate !== serviceDate);
+  const generatedTrips = [];
+
+  state.schedules
+    .filter((schedule) => scheduleMatchesDate(schedule, serviceDate))
+    .forEach((schedule) => {
+      const ride = buildTripFromSchedule(schedule, serviceDate);
+      if (!ride) return;
+      const override = getScheduleOverride(schedule, serviceDate);
+      const rideId = `${schedule.id}_${serviceDate}`;
+      const previous = state.trips.find((trip) => trip.scheduleId === schedule.id && trip.serviceDate === serviceDate);
+      const nextRide = previous
+        ? {
+            ...previous,
+            ...ride,
+            id: previous.id,
+            pickupTime: previous.pickupTime || "",
+            pickupAt: previous.pickupAt || "",
+            pickupLocation: previous.pickupLocation || null,
+            dropoffTime: previous.dropoffTime || "",
+            dropoffAt: previous.dropoffAt || "",
+            dropoffLocation: previous.dropoffLocation || null,
+          }
+        : { ...ride, id: rideId };
+      if (override?.cancelService) return;
+      generatedTrips.push(nextRide);
+    });
+
+  state.trips = [...existingManualTrips, ...generatedTrips]
+    .filter((trip) => trip.serviceDate === serviceDate || !trip.scheduleId)
+    .sort((a, b) => a.scheduledPickup.localeCompare(b.scheduledPickup));
+}
+
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return defaultState();
 
   try {
     const parsed = JSON.parse(raw);
-    if (parsed.serviceDate !== todayKey()) {
-      return rollToToday(parsed);
-    }
     return parsed;
   } catch {
     return defaultState();
@@ -358,12 +522,14 @@ function normalizeState(value) {
   const hasDrivers = Array.isArray(value.drivers);
   const hasCases = Array.isArray(value.cases);
   const hasTrips = Array.isArray(value.trips);
+  const hasSchedules = Array.isArray(value.schedules);
   const next = {
     ...fresh,
     ...value,
     drivers: hasDrivers ? value.drivers : fresh.drivers,
     cases: hasCases ? value.cases : fresh.cases,
     trips: hasTrips ? value.trips : fresh.trips,
+    schedules: hasSchedules ? value.schedules : fresh.schedules,
     events: Array.isArray(value.events) ? value.events : [],
     driverLocations: value.driverLocations && typeof value.driverLocations === "object" ? value.driverLocations : {},
   };
@@ -408,8 +574,34 @@ function normalizeState(value) {
     pickupLocation: null,
     dropoffLocation: null,
     ...trip,
+    scheduleId: trip.scheduleId || trip.schedule_id || "",
     destinationAddress: trip.destinationAddress || next.cases.find((person) => person.id === trip.caseId)?.destinationAddress || "",
   }));
+
+  next.schedules = next.schedules.map((schedule) => {
+    const fallback = fresh.schedules.find((item) => item.id === schedule.id) || {};
+    const dateOverrides = normalizeScheduleOverrides(schedule.dateOverrides || schedule.overrides || []);
+    return {
+      ...fallback,
+      ...schedule,
+      caseId: schedule.caseId || schedule.case_id || "",
+      driverId: schedule.driverId || schedule.driver_id || "",
+      scheduleType: schedule.scheduleType || schedule.schedule_type || "single",
+      serviceDate: schedule.serviceDate || schedule.service_date || "",
+      startDate: schedule.startDate || schedule.start_date || "",
+      endDate: schedule.endDate || schedule.end_date || "",
+      daysOfWeek: normalizeDaysOfWeek(schedule.daysOfWeek || schedule.days_of_week || []),
+      scheduledPickup: schedule.scheduledPickup || schedule.scheduled_pickup || "",
+      scheduledDropoff: schedule.scheduledDropoff || schedule.scheduled_dropoff || "",
+      pickupAddress: schedule.pickupAddress || schedule.pickup_address || "",
+      destinationAddress: schedule.destinationAddress || schedule.destination_address || "",
+      purpose: schedule.purpose || "",
+      specialRequirements: schedule.specialRequirements || schedule.special_requirements || "",
+      status: schedule.status || "active",
+      stopReason: schedule.stopReason || schedule.stop_reason || "",
+      dateOverrides,
+    };
+  });
 
   next.driverLocations = {
     ...seedDriverLocations(next.drivers, next.trips),
@@ -425,6 +617,7 @@ function rollToToday(previous) {
     ...fresh,
     drivers: Array.isArray(previous.drivers) ? previous.drivers : fresh.drivers,
     cases: Array.isArray(previous.cases) ? previous.cases : fresh.cases,
+    schedules: Array.isArray(previous.schedules) ? previous.schedules : fresh.schedules,
     driverLocations: previous.driverLocations ?? fresh.driverLocations,
   };
 }
@@ -433,8 +626,8 @@ function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-async function loadRemoteState() {
-  const response = await fetch("/api/state", {
+async function loadRemoteState(serviceDate = state.serviceDate || todayKey()) {
+  const response = await fetch(`/api/state?serviceDate=${encodeURIComponent(serviceDate)}`, {
     headers: { Accept: "application/json" },
   });
 
@@ -456,7 +649,7 @@ async function loadRemoteState() {
 async function apiAction(action, payload = {}) {
   if (dataMode !== "supabase") return false;
   const guardedPayload = coordinatorActions.has(action)
-    ? { ...payload, coordinatorPasscode }
+    ? { ...payload, coordinatorPasscode, serviceDate: payload.serviceDate || state.serviceDate || todayKey() }
     : payload;
 
   const response = await fetch("/api/state", {
@@ -489,6 +682,20 @@ function updateConnectionState() {
     item.classList.toggle("online", dataMode === "supabase");
     item.classList.toggle("local", dataMode !== "supabase");
   });
+}
+
+async function setServiceDate(serviceDate) {
+  const nextDate = serviceDate || todayKey();
+  state.serviceDate = nextDate;
+  localStorage.setItem(SERVICE_DATE_KEY, nextDate);
+  if (dataMode === "supabase") {
+    await loadRemoteState(nextDate);
+    render();
+    return;
+  }
+  syncLocalSchedulesForDate(nextDate);
+  saveState();
+  render();
 }
 
 function defaultState() {
@@ -735,6 +942,7 @@ function defaultState() {
     drivers,
     cases,
     trips,
+    schedules: [],
     driverLocations: seedDriverLocations(drivers, trips),
     events: [],
   };
@@ -963,6 +1171,10 @@ function renderDashboard() {
   const host = document.getElementById("appView");
   host.replaceChildren(document.getElementById("dashboardTemplate").content.cloneNode(true));
 
+  if (dataMode !== "supabase") {
+    syncLocalSchedulesForDate(state.serviceDate);
+  }
+
   const trips = todayTrips();
   const stats = {
     total: trips.length,
@@ -973,7 +1185,7 @@ function renderDashboard() {
   };
 
   document.getElementById("summaryGrid").innerHTML = [
-    summaryCard("今日接送", stats.total, "全部班次", "", "event_available"),
+    summaryCard("班表接送", stats.total, "全部班次", "", "event_available"),
     summaryCard("待接", stats.scheduled, "尚未上車", "waiting", "pending_actions"),
     summaryCard("接送中", stats.picked_up, "已接到未送達", "moving", "directions_car"),
     summaryCard("已完成", stats.completed, "完成送達", "done", "task_alt"),
@@ -981,6 +1193,11 @@ function renderDashboard() {
   ].join("");
 
   document.getElementById("exportReimbursementBtn").addEventListener("click", exportReimbursementExcel);
+  const serviceDatePicker = document.getElementById("serviceDatePicker");
+  serviceDatePicker.value = state.serviceDate || todayKey();
+  serviceDatePicker.addEventListener("change", (event) => {
+    setServiceDate(event.target.value);
+  });
 
   document.getElementById("mapDriverCount").textContent = `${state.drivers.length} 位司機`;
   document.getElementById("liveMap").innerHTML = renderDriverMap();
@@ -1031,6 +1248,467 @@ function renderDashboard() {
     renderDashboard();
   });
 
+  renderScheduleManager();
+}
+
+function scheduleDaysText(schedule) {
+  if (schedule.scheduleType === "single") {
+    return schedule.serviceDate ? `單次 · ${schedule.serviceDate}` : "單次 · 未定日期";
+  }
+  const days = (schedule.daysOfWeek || []).map((day) => weekdayLabels[day]).join("、") || "未選";
+  return `每週 · ${days}${schedule.startDate ? ` · ${schedule.startDate}` : ""}${schedule.endDate ? ` 至 ${schedule.endDate}` : ""}`;
+}
+
+function scheduleCard(schedule) {
+  const caseItem = getCase(schedule.caseId);
+  const driverItem = getDriver(schedule.driverId);
+  const selected = schedule.id === selectedScheduleId;
+  const overrideCount = (schedule.dateOverrides || []).length;
+  const statusClass = schedule.status === "paused" ? "waiting" : schedule.status === "stopped" ? "alert" : "done";
+  const actions = selected
+    ? `
+      <div class="task-actions case-actions-panel" aria-label="${escapeHTML(caseItem?.name || "排程")} 操作選項">
+        <button class="primary-btn" type="button" data-schedule-action="edit" data-schedule-id="${escapeHTML(schedule.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+          編輯
+        </button>
+        <button class="ghost-btn" type="button" data-schedule-action="toggle" data-schedule-id="${escapeHTML(schedule.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">${schedule.status === "active" ? "pause" : "play_arrow"}</span>
+          ${schedule.status === "active" ? "暫停" : "恢復"}
+        </button>
+        <button class="secondary-btn" type="button" data-schedule-action="override" data-schedule-id="${escapeHTML(schedule.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">rule</span>
+          例外變更
+        </button>
+        <button class="danger-btn" type="button" data-schedule-action="stop" data-schedule-id="${escapeHTML(schedule.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">stop_circle</span>
+          提前停止
+        </button>
+        <button class="danger-btn" type="button" data-schedule-action="delete" data-schedule-id="${escapeHTML(schedule.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          刪除
+        </button>
+      </div>
+    `
+    : `
+      <div class="case-card-hint">點選排程顯示操作</div>
+    `;
+
+  return `
+    <article class="case-card ${selected ? "selected" : ""}" data-schedule-id="${escapeHTML(schedule.id)}" tabindex="0">
+      <div>
+        <div class="case-title-row">
+          <strong>${escapeHTML(caseItem?.name || "未選個案")}</strong>
+          <span class="status-pill ${statusClass}">${escapeHTML(scheduleStatusText(schedule))}</span>
+        </div>
+        <p class="subtext">${escapeHTML(scheduleDaysText(schedule))}</p>
+        <p class="subtext">司機：${escapeHTML(driverItem?.name || "未選")} · ${escapeHTML(driverItem?.vehicleNo || "")}</p>
+        <p class="subtext">上車 ${escapeHTML(schedule.scheduledPickup)} · 送達 ${escapeHTML(schedule.scheduledDropoff)}</p>
+      </div>
+      <div>
+        <p class="subtext">目的地：${escapeHTML(schedule.destinationAddress || "未填")}</p>
+        <p class="subtext">服務項目：${escapeHTML(schedule.purpose || "未填")}</p>
+        <p class="subtext">特殊需求：${escapeHTML(schedule.specialRequirements || "無")}</p>
+        <p class="subtext">例外變更：${overrideCount} 筆</p>
+      </div>
+      ${actions}
+    </article>
+  `;
+}
+
+function updateScheduleFormMode() {
+  const form = document.getElementById("scheduleForm");
+  if (!form) return;
+  const scheduleType = form.elements.scheduleType?.value || "single";
+  const singleLabel = form.elements.serviceDate?.closest("label");
+  const startLabel = form.elements.startDate?.closest("label");
+  const endLabel = form.elements.endDate?.closest("label");
+  const weekdayFieldset = form.querySelector(".weekday-fieldset");
+  if (singleLabel) singleLabel.hidden = scheduleType !== "single";
+  if (startLabel) startLabel.hidden = scheduleType !== "weekly";
+  if (endLabel) endLabel.hidden = scheduleType !== "weekly";
+  if (weekdayFieldset) weekdayFieldset.hidden = scheduleType !== "weekly";
+}
+
+function fillScheduleForm(scheduleId = "") {
+  const schedule = state.schedules.find((item) => item.id === scheduleId);
+  const form = document.getElementById("scheduleForm");
+  if (!form) return;
+  if (!schedule) {
+    form.reset();
+    form.elements.id.value = "";
+    form.elements.scheduleType.value = "single";
+    form.elements.serviceDate.value = state.serviceDate || todayKey();
+    form.elements.startDate.value = state.serviceDate || todayKey();
+    form.elements.endDate.value = "";
+    [...form.querySelectorAll('input[name="daysOfWeek"]')].forEach((item) => (item.checked = false));
+    form.elements.scheduledPickup.value = "09:00";
+    form.elements.scheduledDropoff.value = "09:30";
+    form.elements.pickupAddress.value = "";
+    form.elements.destinationAddress.value = "";
+    form.elements.purpose.value = "";
+    form.elements.specialRequirements.value = "";
+    document.getElementById("scheduleFormMode").textContent = "新增排程";
+    document.getElementById("scheduleSubmitBtn").textContent = "＋ 新增排程";
+    updateScheduleFormMode();
+    return;
+  }
+
+  form.elements.id.value = schedule.id;
+  form.elements.caseId.value = schedule.caseId;
+  form.elements.driverId.value = schedule.driverId;
+  form.elements.scheduleType.value = schedule.scheduleType || "single";
+  form.elements.serviceDate.value = schedule.serviceDate || state.serviceDate || todayKey();
+  form.elements.startDate.value = schedule.startDate || state.serviceDate || todayKey();
+  form.elements.endDate.value = schedule.endDate || "";
+  [...form.querySelectorAll('input[name="daysOfWeek"]')].forEach((item) => {
+    item.checked = (schedule.daysOfWeek || []).includes(Number(item.value));
+  });
+  form.elements.scheduledPickup.value = schedule.scheduledPickup || "09:00";
+  form.elements.scheduledDropoff.value = schedule.scheduledDropoff || "09:30";
+  form.elements.pickupAddress.value = schedule.pickupAddress || "";
+  form.elements.destinationAddress.value = schedule.destinationAddress || "";
+  form.elements.purpose.value = schedule.purpose || "";
+  form.elements.specialRequirements.value = schedule.specialRequirements || "";
+  document.getElementById("scheduleFormMode").textContent = "編輯排程";
+  document.getElementById("scheduleSubmitBtn").textContent = "💾 儲存排程";
+  updateScheduleFormMode();
+}
+
+function fillScheduleOverrideForm(scheduleId = "") {
+  const schedule = state.schedules.find((item) => item.id === scheduleId) || state.schedules.find((item) => item.id === selectedScheduleId);
+  const form = document.getElementById("scheduleOverrideForm");
+  if (!form) return;
+  if (!schedule) {
+    form.reset();
+    form.elements.scheduleId.value = "";
+    form.elements.serviceDate.value = state.serviceDate || todayKey();
+    form.elements.overrideDriverId.value = "";
+    form.elements.overridePickupTime.value = "";
+    form.elements.overrideDropoffTime.value = "";
+    form.elements.overrideDestinationAddress.value = "";
+    form.elements.overridePurpose.value = "";
+    form.elements.specialRequirements.value = "";
+    form.elements.cancelService.checked = false;
+    document.getElementById("scheduleOverrideMode").textContent = "例外變更";
+    return;
+  }
+
+  form.elements.scheduleId.value = schedule.id;
+  const currentOverride = getScheduleOverride(schedule, state.serviceDate || todayKey());
+  form.elements.serviceDate.value = currentOverride?.serviceDate || state.serviceDate || todayKey();
+  form.elements.overrideDriverId.value = currentOverride?.overrideDriverId || schedule.driverId || "";
+  form.elements.overridePickupTime.value = currentOverride?.overridePickupTime || schedule.scheduledPickup || "";
+  form.elements.overrideDropoffTime.value = currentOverride?.overrideDropoffTime || schedule.scheduledDropoff || "";
+  form.elements.overrideDestinationAddress.value = currentOverride?.overrideDestinationAddress || schedule.destinationAddress || "";
+  form.elements.overridePurpose.value = currentOverride?.overridePurpose || schedule.purpose || "";
+  form.elements.specialRequirements.value = currentOverride?.specialRequirements || schedule.specialRequirements || "";
+  form.elements.cancelService.checked = Boolean(currentOverride?.cancelService);
+  document.getElementById("scheduleOverrideMode").textContent = `${schedule.caseId ? getCase(schedule.caseId)?.name || "排程" : "排程"} 的例外變更`;
+}
+
+function renderScheduleManager() {
+  const list = document.getElementById("scheduleList");
+  if (!list) return;
+
+  if (editingScheduleId && !state.schedules.some((item) => item.id === editingScheduleId)) {
+    editingScheduleId = "";
+  }
+  if (selectedScheduleId && !state.schedules.some((item) => item.id === selectedScheduleId)) {
+    selectedScheduleId = "";
+  }
+
+  document.getElementById("scheduleCount").textContent = `${state.schedules.length} 筆排程`;
+  list.innerHTML = state.schedules.length
+    ? state.schedules.map(scheduleCard).join("")
+    : '<div class="empty-state">目前還沒有排程，先新增單次或週期班次。</div>';
+
+  const caseSelect = document.getElementById("scheduleCaseSelect");
+  const driverSelect = document.getElementById("scheduleDriverSelect");
+  const overrideDriverSelect = document.getElementById("scheduleOverrideDriverSelect");
+  const caseOptions = state.cases
+    .filter((person) => person.active)
+    .map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)} · ${escapeHTML(person.caseNo)}</option>`)
+    .join("");
+  const driverOptions = state.drivers
+    .filter((driver) => driver.active)
+    .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.vehicleNo)}</option>`)
+    .join("");
+  if (caseSelect) caseSelect.innerHTML = caseOptions;
+  if (driverSelect) driverSelect.innerHTML = driverOptions;
+  if (overrideDriverSelect) overrideDriverSelect.innerHTML = `<option value="">不變更</option>${driverOptions}`;
+
+  const formPanel = document.getElementById("scheduleFormPanel");
+  const overridePanel = document.getElementById("scheduleOverridePanel");
+  const isScheduleFormOpen = scheduleFormOpen || Boolean(editingScheduleId);
+  formPanel.hidden = !isScheduleFormOpen;
+  overridePanel.hidden = !selectedScheduleId;
+  if (editingScheduleId) fillScheduleForm(editingScheduleId);
+  if (selectedScheduleId) fillScheduleOverrideForm(selectedScheduleId);
+  if (!editingScheduleId && !scheduleFormOpen) fillScheduleForm("");
+  if (!selectedScheduleId) fillScheduleOverrideForm("");
+
+  document.getElementById("openScheduleFormBtn").addEventListener("click", () => {
+    editingScheduleId = "";
+    scheduleFormOpen = true;
+    selectedScheduleId = "";
+    renderDashboard();
+  });
+
+  document.getElementById("scheduleForm").addEventListener("submit", handleScheduleSubmit);
+  document.getElementById("scheduleCancelBtn").addEventListener("click", () => {
+    editingScheduleId = "";
+    scheduleFormOpen = false;
+    renderDashboard();
+  });
+  document.getElementById("scheduleTypeSelect").addEventListener("change", updateScheduleFormMode);
+  document.getElementById("scheduleList").addEventListener("click", handleScheduleAction);
+  document.getElementById("scheduleOverrideForm").addEventListener("submit", handleScheduleOverrideSubmit);
+  document.getElementById("scheduleOverrideCancelBtn").addEventListener("click", () => {
+    scheduleOverrideOpen = false;
+    selectedScheduleId = "";
+    renderDashboard();
+  });
+}
+
+function scheduleFormPayload(form) {
+  const daysOfWeek = [...new Set(form.getAll("daysOfWeek").map((value) => Number(value)).filter((value) => Number.isInteger(value)))].sort((a, b) => a - b);
+  return {
+    id: String(form.get("id") || "").trim(),
+    caseId: String(form.get("caseId") || "").trim(),
+    driverId: String(form.get("driverId") || "").trim(),
+    scheduleType: String(form.get("scheduleType") || "single"),
+    serviceDate: String(form.get("serviceDate") || "").trim(),
+    startDate: String(form.get("startDate") || "").trim(),
+    endDate: String(form.get("endDate") || "").trim(),
+    daysOfWeek,
+    scheduledPickup: String(form.get("scheduledPickup") || "").trim(),
+    scheduledDropoff: String(form.get("scheduledDropoff") || "").trim(),
+    pickupAddress: String(form.get("pickupAddress") || "").trim(),
+    destinationAddress: String(form.get("destinationAddress") || "").trim(),
+    purpose: String(form.get("purpose") || "").trim(),
+    specialRequirements: String(form.get("specialRequirements") || "").trim(),
+    status: "active",
+    stopReason: "",
+    dateOverrides: state.schedules.find((item) => item.id === String(form.get("id") || "").trim())?.dateOverrides || [],
+  };
+}
+
+function validateSchedulePayload(schedule) {
+  if (!schedule.caseId || !schedule.driverId) return "請先選擇個案與司機。";
+  if (schedule.scheduleType === "single" && !schedule.serviceDate) return "單次排程請填單次日期。";
+  if (schedule.scheduleType === "weekly" && !schedule.daysOfWeek.length) return "週期排程至少要選一個星期。";
+  if (schedule.scheduleType === "weekly" && !schedule.startDate) return "週期排程請填起始日期。";
+  if (!schedule.scheduledPickup) return "請填預定上車時間。";
+  if (!schedule.destinationAddress) return "請填目的地。";
+  return "";
+}
+
+async function handleScheduleSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const schedule = scheduleFormPayload(form);
+  const editingId = schedule.id;
+  const nextScheduleId = editingId || uid("sch");
+  const duplicate = validateSchedulePayload(schedule);
+  if (duplicate) {
+    setFlash(duplicate, "error", "dashboard");
+    return;
+  }
+
+  if (dataMode === "supabase") {
+    try {
+      await apiAction(editingId ? "update_schedule" : "create_schedule", {
+        schedule: { ...schedule, id: nextScheduleId },
+        serviceDate: state.serviceDate,
+      });
+      editingScheduleId = "";
+      scheduleFormOpen = false;
+      selectedScheduleId = nextScheduleId;
+      setFlash(`${editingId ? "已更新" : "已新增"}排程`, "success", "dashboard");
+      refreshDashboardAfterScheduleChange();
+    } catch (error) {
+      setFlash(`排程儲存失敗：${error.message}`, "error", "dashboard");
+    }
+    return;
+  }
+
+  const nextSchedule = {
+    ...schedule,
+    id: nextScheduleId,
+  };
+  if (editingId) {
+    state.schedules = state.schedules.map((item) => (item.id === editingId ? nextSchedule : item));
+  } else {
+    state.schedules.push(nextSchedule);
+  }
+  editingScheduleId = "";
+  scheduleFormOpen = false;
+  selectedScheduleId = nextSchedule.id;
+  syncLocalSchedulesForDate(state.serviceDate);
+  saveState();
+  setFlash(`${editingId ? "已更新" : "已新增"}排程`, "success", "dashboard");
+  renderDashboard();
+}
+
+function refreshDashboardAfterScheduleChange() {
+  if (dataMode !== "supabase") {
+    syncLocalSchedulesForDate(state.serviceDate);
+    saveState();
+  }
+  renderDashboard();
+}
+
+function scheduleOverridePayload(form) {
+  return {
+    scheduleId: String(form.get("scheduleId") || "").trim(),
+    serviceDate: String(form.get("serviceDate") || "").trim(),
+    overrideDriverId: String(form.get("overrideDriverId") || "").trim(),
+    overridePickupTime: String(form.get("overridePickupTime") || "").trim(),
+    overrideDropoffTime: String(form.get("overrideDropoffTime") || "").trim(),
+    overrideDestinationAddress: String(form.get("overrideDestinationAddress") || "").trim(),
+    overridePurpose: String(form.get("overridePurpose") || "").trim(),
+    specialRequirements: String(form.get("specialRequirements") || "").trim(),
+    cancelService: Boolean(form.get("cancelService")),
+    note: "",
+  };
+}
+
+async function handleScheduleOverrideSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const override = scheduleOverridePayload(form);
+  if (!override.scheduleId || !override.serviceDate) {
+    setFlash("請先選擇排程與日期。", "error", "dashboard");
+    return;
+  }
+
+  if (dataMode === "supabase") {
+    try {
+      await apiAction("create_schedule_override", {
+        scheduleId: override.scheduleId,
+        override,
+        serviceDate: state.serviceDate,
+      });
+      selectedScheduleId = override.scheduleId;
+      scheduleOverrideOpen = true;
+      setFlash("已儲存例外變更", "success", "dashboard");
+      refreshDashboardAfterScheduleChange();
+    } catch (error) {
+      setFlash(`例外變更失敗：${error.message}`, "error", "dashboard");
+    }
+    return;
+  }
+
+  const schedule = state.schedules.find((item) => item.id === override.scheduleId);
+  if (!schedule) return;
+  const nextOverride = {
+    serviceDate: override.serviceDate,
+    overrideDriverId: override.overrideDriverId,
+    overridePickupTime: override.overridePickupTime,
+    overrideDropoffTime: override.overrideDropoffTime,
+    overrideDestinationAddress: override.overrideDestinationAddress,
+    overridePurpose: override.overridePurpose,
+    specialRequirements: override.specialRequirements,
+    cancelService: override.cancelService,
+    note: override.note || "",
+  };
+  schedule.dateOverrides = normalizeScheduleOverrides([...(schedule.dateOverrides || []).filter((item) => item.serviceDate !== override.serviceDate), nextOverride]);
+  selectedScheduleId = schedule.id;
+  scheduleOverrideOpen = true;
+  syncLocalSchedulesForDate(state.serviceDate);
+  saveState();
+  setFlash("已儲存例外變更", "success", "dashboard");
+  renderDashboard();
+}
+
+async function handleScheduleAction(event) {
+  if (event.target.closest("a")) return;
+  const button = event.target.closest("button[data-schedule-action]");
+  if (!button) {
+    const card = event.target.closest(".case-card[data-schedule-id]");
+    if (!card) return;
+    selectedScheduleId = card.dataset.scheduleId === selectedScheduleId ? "" : card.dataset.scheduleId;
+    editingScheduleId = "";
+    scheduleFormOpen = false;
+    scheduleOverrideOpen = Boolean(selectedScheduleId);
+    renderDashboard();
+    return;
+  }
+
+  const schedule = state.schedules.find((item) => item.id === button.dataset.scheduleId);
+  if (!schedule) return;
+  selectedScheduleId = schedule.id;
+
+  if (button.dataset.scheduleAction === "edit") {
+    editingScheduleId = schedule.id;
+    scheduleFormOpen = true;
+    scheduleOverrideOpen = false;
+    renderDashboard();
+    return;
+  }
+
+  if (button.dataset.scheduleAction === "override") {
+    scheduleOverrideOpen = true;
+    renderDashboard();
+    return;
+  }
+
+  if (button.dataset.scheduleAction === "toggle") {
+    const nextStatus = schedule.status === "active" ? "paused" : "active";
+    if (dataMode === "supabase") {
+      await apiAction("toggle_schedule", {
+        scheduleId: schedule.id,
+        status: nextStatus,
+        endDate: nextStatus === "active" ? "" : schedule.endDate || "",
+        serviceDate: state.serviceDate,
+      });
+      refreshDashboardAfterScheduleChange();
+      return;
+    }
+    schedule.status = nextStatus;
+    if (nextStatus === "active") {
+      schedule.endDate = "";
+      schedule.stopReason = "";
+    }
+    syncLocalSchedulesForDate(state.serviceDate);
+    saveState();
+    renderDashboard();
+    return;
+  }
+
+  if (button.dataset.scheduleAction === "stop") {
+    if (!window.confirm(`確定提前停止 ${getCase(schedule.caseId)?.name || "這筆排程"}？`)) return;
+    const nextEndDate = state.serviceDate || todayKey();
+    if (dataMode === "supabase") {
+      await apiAction("toggle_schedule", { scheduleId: schedule.id, status: "stopped", endDate: nextEndDate, serviceDate: state.serviceDate });
+      refreshDashboardAfterScheduleChange();
+      return;
+    }
+    schedule.status = "stopped";
+    schedule.endDate = nextEndDate;
+    syncLocalSchedulesForDate(state.serviceDate);
+    saveState();
+    renderDashboard();
+    return;
+  }
+
+  if (button.dataset.scheduleAction === "delete") {
+    if (!window.confirm("確定刪除這筆排程？")) return;
+    if (dataMode === "supabase") {
+      await apiAction("delete_schedule", { scheduleId: schedule.id, serviceDate: state.serviceDate });
+      selectedScheduleId = "";
+      scheduleOverrideOpen = false;
+      refreshDashboardAfterScheduleChange();
+      return;
+    }
+    state.schedules = state.schedules.filter((item) => item.id !== schedule.id);
+    state.trips = state.trips.filter((trip) => trip.scheduleId !== schedule.id);
+    selectedScheduleId = "";
+    scheduleOverrideOpen = false;
+    saveState();
+    renderDashboard();
+  }
 }
 
 function renderDriverMap() {
@@ -1885,11 +2563,17 @@ async function handleCaseAction(event) {
   }
 
   if (button.dataset.action === "delete") {
+    const relatedScheduleIds = new Set(state.schedules.filter((schedule) => schedule.caseId === person.id).map((schedule) => schedule.id));
     state.trips = state.trips.filter((trip) => trip.caseId !== person.id);
+    state.trips = state.trips.filter((trip) => !relatedScheduleIds.has(trip.scheduleId));
+    state.schedules = state.schedules.filter((schedule) => schedule.caseId !== person.id);
     state.cases = state.cases.filter((item) => item.id !== person.id);
+    selectedScheduleId = "";
     editingCaseId = "";
     selectedCaseId = "";
     caseFormOpen = false;
+    scheduleFormOpen = false;
+    scheduleOverrideOpen = false;
   }
 
   saveState();
@@ -2169,9 +2853,13 @@ async function handleDriverManageAction(event) {
     driver.active = !driver.active;
   }
   if (button.dataset.action === "delete") {
+    const relatedScheduleIds = new Set(state.schedules.filter((schedule) => schedule.driverId === driver.id).map((schedule) => schedule.id));
     state.trips = state.trips.filter((trip) => trip.driverId !== driver.id);
+    state.trips = state.trips.filter((trip) => !relatedScheduleIds.has(trip.scheduleId));
+    state.schedules = state.schedules.filter((schedule) => schedule.driverId !== driver.id);
     delete state.driverLocations[driver.id];
     state.drivers = state.drivers.filter((item) => item.id !== driver.id);
+    selectedScheduleId = "";
     selectedDriverId = "";
   }
   editingDriverId = "";

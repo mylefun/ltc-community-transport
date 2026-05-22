@@ -145,6 +145,10 @@
                 <h3>今日班表</h3>
               </div>
               <div class="filter-row">
+                <label class="date-filter">
+                  服務日期
+                  <input type="date" id="serviceDatePicker" />
+                </label>
                 <button class="secondary-btn export-btn" type="button" id="exportReimbursementBtn">
                   <span class="material-symbols-outlined" aria-hidden="true">table_view</span>
                   匯出核銷Excel
@@ -166,6 +170,149 @@
               </div>
             </div>
             <div class="route-board" id="routeBoard"></div>
+          </section>
+
+          <section class="work-section schedule-manager-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">接送排程</p>
+                <h3>單次與週期性接送</h3>
+              </div>
+              <div class="heading-actions">
+                <span class="count-pill" id="scheduleCount"></span>
+                <button class="icon-add-btn material-symbols-outlined" id="openScheduleFormBtn" type="button" aria-label="新增排程">add</button>
+              </div>
+            </div>
+            <div class="schedule-layout">
+              <div class="schedule-list" id="scheduleList"></div>
+
+              <section class="work-section compact-section schedule-form-panel" id="scheduleFormPanel" hidden>
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow" id="scheduleFormMode">新增排程</p>
+                    <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">event_repeat</span>排程資料</h3>
+                  </div>
+                </div>
+                <form class="case-form" id="scheduleForm">
+                  <input type="hidden" name="id" />
+                  <label>
+                    個案
+                    <select name="caseId" id="scheduleCaseSelect"></select>
+                  </label>
+                  <label>
+                    指派司機
+                    <select name="driverId" id="scheduleDriverSelect"></select>
+                  </label>
+                  <label>
+                    排程類型
+                    <select name="scheduleType" id="scheduleTypeSelect">
+                      <option value="single">單次</option>
+                      <option value="weekly">週期</option>
+                    </select>
+                  </label>
+                  <label>
+                    單次日期
+                    <input name="serviceDate" type="date" />
+                  </label>
+                  <label>
+                    起始日期
+                    <input name="startDate" type="date" />
+                  </label>
+                  <label>
+                    結束日期
+                    <input name="endDate" type="date" />
+                  </label>
+                  <fieldset class="weekday-fieldset full">
+                    <legend>每週星期</legend>
+                    <div class="weekday-grid">
+                      <label><input type="checkbox" name="daysOfWeek" value="0" /> 日</label>
+                      <label><input type="checkbox" name="daysOfWeek" value="1" /> 一</label>
+                      <label><input type="checkbox" name="daysOfWeek" value="2" /> 二</label>
+                      <label><input type="checkbox" name="daysOfWeek" value="3" /> 三</label>
+                      <label><input type="checkbox" name="daysOfWeek" value="4" /> 四</label>
+                      <label><input type="checkbox" name="daysOfWeek" value="5" /> 五</label>
+                      <label><input type="checkbox" name="daysOfWeek" value="6" /> 六</label>
+                    </div>
+                  </fieldset>
+                  <label>
+                    預定上車
+                    <input name="scheduledPickup" type="time" value="09:00" />
+                  </label>
+                  <label>
+                    預定送達
+                    <input name="scheduledDropoff" type="time" value="09:30" />
+                  </label>
+                  <label class="full">
+                    上車地址
+                    <input name="pickupAddress" />
+                  </label>
+                  <label class="full">
+                    目的地
+                    <input name="destinationAddress" />
+                  </label>
+                  <label class="full">
+                    服務項目
+                    <input name="purpose" placeholder="日照接送、復健門診、據點活動..." />
+                  </label>
+                  <label class="full">
+                    特殊需求
+                    <textarea name="specialRequirements" rows="2" placeholder="輪椅、陪同、須提前通知等"></textarea>
+                  </label>
+                  <div class="form-actions full">
+                    <button class="primary-btn" type="submit" id="scheduleSubmitBtn">＋ 新增排程</button>
+                    <button class="ghost-btn" type="button" id="scheduleCancelBtn">清除</button>
+                  </div>
+                </form>
+              </section>
+            </div>
+
+            <section class="work-section compact-section schedule-override-panel" id="scheduleOverridePanel" hidden>
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow" id="scheduleOverrideMode">例外變更</p>
+                  <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">rule</span>某日特殊需求</h3>
+                </div>
+              </div>
+              <form class="case-form" id="scheduleOverrideForm">
+                <input type="hidden" name="scheduleId" />
+                <label>
+                  變更日期
+                  <input name="serviceDate" type="date" />
+                </label>
+                <label>
+                  變更司機
+                  <select name="overrideDriverId" id="scheduleOverrideDriverSelect"></select>
+                </label>
+                <label>
+                  新上車時間
+                  <input name="overridePickupTime" type="time" />
+                </label>
+                <label>
+                  新送達時間
+                  <input name="overrideDropoffTime" type="time" />
+                </label>
+                <label class="full">
+                  新目的地
+                  <input name="overrideDestinationAddress" />
+                </label>
+                <label class="full">
+                  新服務項目
+                  <input name="overridePurpose" />
+                </label>
+                <label class="full">
+                  特殊需求/備註
+                  <textarea name="specialRequirements" rows="2"></textarea>
+                </label>
+                <label class="check-row full">
+                  <input name="cancelService" type="checkbox" />
+                  <span>取消此日排程</span>
+                </label>
+                <div class="form-actions full">
+                  <button class="primary-btn" type="submit" id="scheduleOverrideSubmitBtn">＋ 儲存例外</button>
+                  <button class="ghost-btn" type="button" id="scheduleOverrideCancelBtn">清除</button>
+                </div>
+              </form>
+            </section>
           </section>
         </div>
 

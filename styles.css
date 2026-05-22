@@ -1215,6 +1215,10 @@ body[data-view="home"] .view-host {
   flex-wrap: wrap;
 }
 
+.date-filter {
+  min-width: 180px;
+}
+
 .export-btn {
   min-height: 44px;
   white-space: nowrap;
@@ -1558,6 +1562,68 @@ textarea {
   border-radius: 14px;
   font-weight: 800;
   text-align: center;
+}
+
+.schedule-manager-panel {
+  margin-top: 10px;
+}
+
+.schedule-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  gap: 16px;
+}
+
+.schedule-list {
+  display: grid;
+  gap: 12px;
+}
+
+.weekday-fieldset {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(189, 201, 200, 0.58);
+  border-radius: 16px;
+  background: rgba(247, 251, 251, 0.9);
+}
+
+.weekday-fieldset legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.weekday-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.weekday-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 10px;
+  color: var(--brand-dark);
+  background: var(--surface);
+  border: 1px solid rgba(189, 201, 200, 0.58);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.weekday-grid input {
+  width: auto;
+  min-height: auto;
+  padding: 0;
+  box-shadow: none;
+}
+
+.schedule-form-panel,
+.schedule-override-panel {
+  height: fit-content;
 }
 
 .gate-panel {
@@ -2130,6 +2196,10 @@ body[data-view="driver"] .task-actions button {
     grid-template-columns: 1fr;
   }
 
+  .schedule-layout {
+    grid-template-columns: 1fr;
+  }
+
   .ride-row,
   .case-card,
   .driver-task {
@@ -2298,6 +2368,10 @@ body[data-view="driver"] .task-actions button {
     align-items: stretch;
   }
 
+  .weekday-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .summary-card strong {
     font-size: 24px;
   }
@@ -2309,5 +2383,9 @@ body[data-view="driver"] .task-actions button {
   .task-title-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .weekday-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
