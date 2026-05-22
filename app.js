@@ -30,7 +30,21 @@ const eventLabels = {
   heartbeat: "目前位置",
 };
 
+const communitySites = [
+  { name: "古亭社區", address: "壯圍鄉古亭路48-16號", lat: 24.77218, lng: 121.80029 },
+  { name: "功勞社區", address: "壯圍鄉美功路一段 80 巷 21 號", lat: 24.77088, lng: 121.78335 },
+  { name: "美城社區", address: "壯圍鄉永美路二段 121 號", lat: 24.77782, lng: 121.78892 },
+  { name: "新社社區", address: "壯圍鄉新社路 54-3 號", lat: 24.78592, lng: 121.80945 },
+  { name: "我們的家", address: "羅東鎮康莊路25號", lat: 24.66986, lng: 121.77691 },
+  { name: "五結樂智", address: "五結鄉五結路二段360-1號", lat: 24.68547, lng: 121.79939 },
+];
+
 const releaseNotes = [
+  {
+    version: "v0.7.2",
+    date: "2026-05-22",
+    items: ["個案支援多位緊急聯絡人", "電話欄位新增一鍵撥打圖示", "新增常用目的地與社區據點欄位", "承辦人入口新增核銷清冊 Excel 匯出"],
+  },
   {
     version: "v0.7.1",
     date: "2026-05-22",
@@ -187,6 +201,127 @@ function escapeHTML(value) {
     .replaceAll("'", "&#039;");
 }
 
+function escapeXML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/[^\d+#,;]/g, "");
+}
+
+function phoneKind(value) {
+  const clean = normalizePhone(value);
+  if (!clean) return "";
+  return /^09\d{8}$/.test(clean) ? "手機" : "室內";
+}
+
+function splitPhoneByType(value) {
+  const parts = String(value || "").match(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{3,4}(?:#\d+)?/g) || [];
+  return {
+    mobile: parts.find((item) => phoneKind(item) === "手機") || "",
+    landline: parts.find((item) => phoneKind(item) === "室內") || "",
+  };
+}
+
+function renderPhoneLink(value, label = "") {
+  const phone = String(value || "").trim();
+  const href = normalizePhone(phone);
+  if (!phone) return "";
+  return `
+    <a class="phone-link" href="tel:${escapeHTML(href)}" aria-label="撥打${escapeHTML(label || phone)}">
+      <span class="material-symbols-outlined" aria-hidden="true">call</span>
+      <span>${escapeHTML(label ? `${label} ${phone}` : phone)}</span>
+    </a>
+  `;
+}
+
+function uniqueItems(items, keyFn = (item) => item) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = keyFn(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeEmergencyContacts(person) {
+  const fromArray = Array.isArray(person.emergencyContacts) ? person.emergencyContacts : [];
+  const primary = {
+    name: person.emergencyContact || "",
+    relation: person.emergencyRelation || "",
+    phone: person.emergencyPhone || "",
+  };
+  return uniqueItems([...fromArray, primary], (item) => `${item.name || ""}|${item.phone || ""}`)
+    .map((item) => ({
+      name: String(item.name || "").trim(),
+      relation: String(item.relation || "").trim(),
+      phone: String(item.phone || "").trim(),
+    }))
+    .filter((item) => item.name || item.phone);
+}
+
+function contactsToText(contacts) {
+  return normalizeEmergencyContacts({ emergencyContacts: contacts })
+    .map((item) => [item.name, item.relation, item.phone].filter(Boolean).join("｜"))
+    .join("\n");
+}
+
+function parseEmergencyContacts(text, fallback = {}) {
+  const parsed = String(text || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const phone = line.match(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}|0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{3,4}(?:#\d+)?/)?.[0] || "";
+      const chunks = line
+        .replace(phone, "")
+        .split(/[,\t|｜/]/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+      return { name: chunks[0] || "", relation: chunks[1] || "", phone };
+    });
+  return normalizeEmergencyContacts({
+    emergencyContacts: parsed,
+    emergencyContact: fallback.name,
+    emergencyRelation: fallback.relation,
+    emergencyPhone: fallback.phone,
+  });
+}
+
+function normalizeDestinations(person) {
+  const fromArray = Array.isArray(person.destinations) ? person.destinations : [];
+  const primary = { name: person.destinationAddress || "", address: person.destinationAddress || "" };
+  return uniqueItems([...fromArray, primary], (item) => `${item.name || ""}|${item.address || ""}`)
+    .map((item) => ({
+      name: String(item.name || item.address || "").trim(),
+      address: String(item.address || item.name || "").trim(),
+    }))
+    .filter((item) => item.name || item.address);
+}
+
+function destinationsToText(destinations) {
+  return normalizeDestinations({ destinations })
+    .map((item) => (item.name === item.address ? item.name : `${item.name}｜${item.address}`))
+    .join("\n");
+}
+
+function parseDestinations(text, fallback = "") {
+  const parsed = String(text || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, address] = line.split(/[|｜]/).map((part) => part.trim());
+      return { name: name || address || "", address: address || name || "" };
+    });
+  return normalizeDestinations({ destinations: parsed, destinationAddress: fallback });
+}
+
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return defaultState();
@@ -233,10 +368,36 @@ function normalizeState(value) {
     };
   });
 
+  next.cases = next.cases.map((person) => {
+    const fallback = fresh.cases.find((item) => item.id === person.id) || {};
+    const phones = splitPhoneByType(person.phone);
+    const landlinePhone = person.landlinePhone || phones.landline || "";
+    const mobilePhone = person.mobilePhone || phones.mobile || "";
+    const emergencyContacts = normalizeEmergencyContacts({ ...fallback, ...person });
+    const destinations = normalizeDestinations({ ...fallback, ...person });
+    return {
+      ...fallback,
+      ...person,
+      phone: person.phone || mobilePhone || landlinePhone || fallback.phone || "",
+      landlinePhone,
+      mobilePhone,
+      welfareStatus: person.welfareStatus || "",
+      communitySite: person.communitySite || "",
+      quotaNote: person.quotaNote || "",
+      emergencyContacts,
+      emergencyContact: emergencyContacts[0]?.name || person.emergencyContact || "",
+      emergencyRelation: emergencyContacts[0]?.relation || person.emergencyRelation || "",
+      emergencyPhone: emergencyContacts[0]?.phone || person.emergencyPhone || "",
+      destinations,
+      destinationAddress: person.destinationAddress || destinations[0]?.address || "",
+    };
+  });
+
   next.trips = next.trips.map((trip) => ({
     pickupLocation: null,
     dropoffLocation: null,
     ...trip,
+    destinationAddress: trip.destinationAddress || next.cases.find((person) => person.id === trip.caseId)?.destinationAddress || "",
   }));
 
   next.driverLocations = {
@@ -808,6 +969,8 @@ function renderDashboard() {
     summaryCard("可能延遲", stats.late, "逾預定 10 分鐘", "alert", "warning"),
   ].join("");
 
+  document.getElementById("exportReimbursementBtn").addEventListener("click", exportReimbursementExcel);
+
   document.getElementById("mapDriverCount").textContent = `${state.drivers.length} 位司機`;
   document.getElementById("liveMap").innerHTML = renderDriverMap();
   setupMapControls();
@@ -1120,10 +1283,133 @@ function summaryCard(label, value, hint, tone, icon = "analytics") {
   `;
 }
 
+function minguoDate(value) {
+  const [year, month, day] = String(value || "").split("-").map(Number);
+  if (!year || !month || !day) return value || "";
+  return `${year - 1911}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
+}
+
+function addressCity(address) {
+  return String(address || "").match(/[\u4e00-\u9fa5]{2,3}[縣市]/)?.[0] || "未填";
+}
+
+function burdenRateFor(person) {
+  const text = `${person?.welfareStatus || ""} ${person?.quotaNote || ""} ${person?.note || ""}`;
+  if (/低收|第一類|一類/.test(text)) return 0;
+  if (/中低|第二類|二類/.test(text)) return 0.05;
+  return 0.16;
+}
+
+function reimbursementRows() {
+  const price = 115;
+  const remotePrice = 140;
+  const rows = new Map();
+
+  todayTrips()
+    .filter((trip) => getTripStatus(trip) === "completed")
+    .forEach((trip) => {
+      const person = getCase(trip.caseId);
+      const driver = getDriver(trip.driverId);
+      if (!person) return;
+      const destination = trip.destinationAddress || person.destinationAddress || "";
+      const key = [person.id, driver?.id || "", trip.purpose || "交通接送", destination].join("|");
+      const burdenRate = burdenRateFor(person);
+      const existing = rows.get(key) || {
+        person,
+        driver,
+        purpose: trip.purpose || "交通接送",
+        destination,
+        count: 0,
+        burdenRate,
+      };
+      existing.count += 1;
+      rows.set(key, existing);
+    });
+
+  return [...rows.values()].map(({ person, driver, purpose, destination, count, burdenRate }) => {
+    const declared = price * count;
+    const burdenFee = Math.round(declared * burdenRate);
+    const subsidy = declared - burdenFee;
+    return {
+      身分證號: person.identityNo || "",
+      個案姓名: person.name || "",
+      採用計畫: "長照2.0",
+      CMS等級: person.careLevel || "",
+      福利身分別: person.welfareStatus || "一般戶",
+      服務項目類別: purpose || "交通接送",
+      服務日期: minguoDate(state.serviceDate),
+      "給(支)付價格": price,
+      原民區或離島支付價格: remotePrice,
+      次數: count,
+      申報費用: declared,
+      部分負擔比率: `${Math.round(burdenRate * 100)}%`,
+      部分負擔費用: burdenFee,
+      補助比率: `${Math.round((1 - burdenRate) * 100)}%`,
+      "申請(補助)費用": subsidy,
+      "原民區或離島申請(補助)費用": remotePrice * count - Math.round(remotePrice * count * burdenRate),
+      實際補助金額: subsidy,
+      服務當下居住縣市: addressCity(person.pickupAddress),
+      照管專員: person.careManager || "",
+      服務人員: driver?.name || "",
+      上車地址: person.pickupAddress || "",
+      目的地: destination,
+    };
+  });
+}
+
+function downloadSpreadsheet(filename, rows) {
+  if (!rows.length) {
+    setFlash("目前沒有已完成的班次可匯出核銷清冊。", "error");
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const headerCells = headers.map((header) => `<Cell><Data ss:Type="String">${escapeXML(header)}</Data></Cell>`).join("");
+  const bodyRows = rows
+    .map((row) => {
+      const cells = headers
+        .map((header) => {
+          const value = row[header];
+          const type = typeof value === "number" ? "Number" : "String";
+          return `<Cell><Data ss:Type="${type}">${escapeXML(value)}</Data></Cell>`;
+        })
+        .join("");
+      return `<Row>${cells}</Row>`;
+    })
+    .join("");
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="核銷清冊">
+    <Table>
+      <Row>${headerCells}</Row>
+      ${bodyRows}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  setFlash(`已匯出核銷清冊：${rows.length} 筆`, "success");
+}
+
+function exportReimbursementExcel() {
+  downloadSpreadsheet(`社區交通車核銷清冊_${state.serviceDate}.xls`, reimbursementRows());
+}
+
 function renderRideRow(trip) {
   const person = getCase(trip.caseId);
   const driver = getDriver(trip.driverId);
   const status = getTripStatus(trip);
+  const destination = trip.destinationAddress || person?.destinationAddress || "";
   const options = state.drivers
     .map((item) => {
       const selected = item.id === trip.driverId ? "selected" : "";
@@ -1146,7 +1432,7 @@ function renderRideRow(trip) {
       </div>
       <div>
         <p class="subtext">上車：${escapeHTML(person?.pickupAddress ?? "")}</p>
-        <p class="subtext">目的地：${escapeHTML(person?.destinationAddress ?? "")}</p>
+        <p class="subtext">目的地：${escapeHTML(destination)}</p>
       </div>
       <label>
         指派司機
@@ -1181,7 +1467,7 @@ function googleMapsRouteUrl(trip) {
     params.set("waypoints", person.pickupAddress);
   }
 
-  params.set("destination", person?.destinationAddress || trip.destinationAddress || person?.pickupAddress || "");
+  params.set("destination", trip.destinationAddress || person?.destinationAddress || person?.pickupAddress || "");
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
@@ -1217,6 +1503,21 @@ function renderCases(host = document.getElementById("appView")) {
     .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.vehicleNo)}</option>`)
     .join("");
 
+  const siteSelect = document.getElementById("communitySiteSelect");
+  siteSelect.innerHTML = [
+    '<option value="">自行輸入目的地</option>',
+    ...communitySites.map((site) => `<option value="${escapeHTML(site.name)}">${escapeHTML(site.name)} · ${escapeHTML(site.address)}</option>`),
+  ].join("");
+  siteSelect.addEventListener("change", (event) => {
+    const site = communitySites.find((item) => item.name === event.target.value);
+    const form = document.getElementById("caseForm");
+    if (!site || !form) return;
+    form.elements.destinationAddress.value = site.address;
+    const current = parseDestinations(form.elements.destinationsText.value, form.elements.destinationAddress.value);
+    form.elements.destinationsText.value = destinationsToText([...current, { name: site.name, address: site.address }]);
+    form.elements.tripDestination.value = site.address;
+  });
+
   document.getElementById("openCaseFormBtn").addEventListener("click", () => {
     editingCaseId = "";
     selectedCaseId = "";
@@ -1240,6 +1541,33 @@ function renderCaseCard(person) {
   const hasTodayTrip = state.trips.some((trip) => trip.caseId === person.id && trip.serviceDate === state.serviceDate);
   const isSelected = selectedCaseId === person.id;
   const routeUrl = googleMapsCaseRouteUrl(person);
+  const contacts = normalizeEmergencyContacts(person);
+  const phoneLinks = uniqueItems(
+    [
+      person.phone ? { label: "主要", phone: person.phone } : null,
+      person.landlinePhone ? { label: "室內", phone: person.landlinePhone } : null,
+      person.mobilePhone ? { label: "手機", phone: person.mobilePhone } : null,
+    ].filter(Boolean),
+    (item) => normalizePhone(item.phone),
+  )
+    .map((item) => renderPhoneLink(item.phone, item.label))
+    .join("");
+  const contactList = contacts.length
+    ? contacts
+        .map((contact) => {
+          return `
+            <li>
+              <span>${escapeHTML(contact.name || "未填姓名")} ${contact.relation ? `(${escapeHTML(contact.relation)})` : ""}</span>
+              ${renderPhoneLink(contact.phone)}
+            </li>
+          `;
+        })
+        .join("")
+    : "<li>未填</li>";
+  const destinationList = normalizeDestinations(person)
+    .slice(0, 4)
+    .map((item) => `<span class="destination-chip">${escapeHTML(item.name)}${item.address && item.address !== item.name ? ` · ${escapeHTML(item.address)}` : ""}</span>`)
+    .join("");
   const actions = isSelected
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(person.name)} 操作選項">
@@ -1275,12 +1603,15 @@ function renderCaseCard(person) {
           <span class="status-pill ${activeClass}">${activeText}</span>
         </div>
         <p class="subtext">${escapeHTML(person.caseNo)} · ${escapeHTML(person.gender || "未填性別")} · ${escapeHTML(person.careLevel)}</p>
-        <p class="subtext">${escapeHTML(person.phone)}</p>
+        <div class="phone-list">${phoneLinks || renderPhoneLink(person.phone)}</div>
       </div>
       <div>
-        <p class="subtext">個管員：${escapeHTML(person.careManager || "未填")} ${person.careManagerPhone ? `· ${escapeHTML(person.careManagerPhone)}` : ""}</p>
-        <p class="subtext">服務區域：${escapeHTML(person.serviceArea || "未填")} · 輔具：${escapeHTML(person.assistiveDevice || "未填")}</p>
-        <p class="subtext">緊急聯絡：${escapeHTML(person.emergencyContact || "未填")} ${person.emergencyRelation ? `(${escapeHTML(person.emergencyRelation)})` : ""}</p>
+        <p class="subtext">個管員：${escapeHTML(person.careManager || "未填")} ${person.careManagerPhone ? renderPhoneLink(person.careManagerPhone) : ""}</p>
+        <p class="subtext">服務區域：${escapeHTML(person.serviceArea || "未填")} · 福利身分：${escapeHTML(person.welfareStatus || "未填")} · 輔具：${escapeHTML(person.assistiveDevice || "未填")}</p>
+        <div class="contact-block">
+          <span class="subtext">緊急聯絡</span>
+          <ul>${contactList}</ul>
+        </div>
         <p class="subtext case-address-line">
           <span>上車：${escapeHTML(person.pickupAddress)}</span>
           <a class="inline-map-btn" href="${escapeHTML(routeUrl)}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(person.name)} 接送路徑">
@@ -1293,6 +1624,7 @@ function renderCaseCard(person) {
             <span class="material-symbols-outlined" aria-hidden="true">map</span>
           </a>
         </p>
+        ${destinationList ? `<div class="destination-list">${destinationList}</div>` : ""}
         <p class="subtext">行動：${escapeHTML(person.mobility)}</p>
         <p class="subtext">接送注意：${escapeHTML(person.rideNote || person.note || "無")}</p>
       </div>
@@ -1312,10 +1644,14 @@ function fillCaseForm(caseId) {
   form.elements.identityNo.value = person.identityNo || "";
   form.elements.gender.value = person.gender || "";
   form.elements.birthDate.value = person.birthDate || "";
+  form.elements.welfareStatus.value = person.welfareStatus || "";
   form.elements.phone.value = person.phone;
+  form.elements.landlinePhone.value = person.landlinePhone || "";
+  form.elements.mobilePhone.value = person.mobilePhone || "";
   form.elements.emergencyContact.value = person.emergencyContact || "";
   form.elements.emergencyRelation.value = person.emergencyRelation || "";
   form.elements.emergencyPhone.value = person.emergencyPhone || "";
+  form.elements.emergencyContactsText.value = contactsToText(person.emergencyContacts || []);
   form.elements.careLevel.value = person.careLevel;
   form.elements.mobility.value = person.mobility;
   form.elements.assistiveDevice.value = person.assistiveDevice || "";
@@ -1324,6 +1660,10 @@ function fillCaseForm(caseId) {
   form.elements.careManagerPhone.value = person.careManagerPhone || "";
   form.elements.pickupAddress.value = person.pickupAddress;
   form.elements.destinationAddress.value = person.destinationAddress;
+  form.elements.communitySite.value = person.communitySite || "";
+  form.elements.quotaNote.value = person.quotaNote || "";
+  form.elements.destinationsText.value = destinationsToText(person.destinations || []);
+  form.elements.tripDestination.value = "";
   form.elements.rideNote.value = person.rideNote || "";
   form.elements.note.value = person.note || "";
   form.elements.createTrip.checked = false;
@@ -1337,6 +1677,13 @@ async function handleCaseSubmit(event) {
   const form = new FormData(event.currentTarget);
   const editingId = String(form.get("id") || "").trim();
   const existingCase = editingId ? getCase(editingId) : null;
+  const primaryEmergency = {
+    name: String(form.get("emergencyContact")).trim(),
+    relation: String(form.get("emergencyRelation")).trim(),
+    phone: String(form.get("emergencyPhone")).trim(),
+  };
+  const emergencyContacts = parseEmergencyContacts(String(form.get("emergencyContactsText") || ""), primaryEmergency);
+  const destinations = parseDestinations(String(form.get("destinationsText") || ""), String(form.get("destinationAddress")).trim());
   const newCase = {
     id: editingId || uid("case"),
     caseNo: String(form.get("caseNo")).trim(),
@@ -1344,10 +1691,14 @@ async function handleCaseSubmit(event) {
     identityNo: String(form.get("identityNo")).trim(),
     gender: String(form.get("gender")).trim(),
     birthDate: String(form.get("birthDate")).trim(),
+    welfareStatus: String(form.get("welfareStatus")).trim(),
     phone: String(form.get("phone")).trim(),
-    emergencyContact: String(form.get("emergencyContact")).trim(),
-    emergencyRelation: String(form.get("emergencyRelation")).trim(),
-    emergencyPhone: String(form.get("emergencyPhone")).trim(),
+    landlinePhone: String(form.get("landlinePhone")).trim(),
+    mobilePhone: String(form.get("mobilePhone")).trim(),
+    emergencyContacts,
+    emergencyContact: emergencyContacts[0]?.name || primaryEmergency.name,
+    emergencyRelation: emergencyContacts[0]?.relation || primaryEmergency.relation,
+    emergencyPhone: emergencyContacts[0]?.phone || primaryEmergency.phone,
     careLevel: String(form.get("careLevel")),
     mobility: String(form.get("mobility")),
     assistiveDevice: String(form.get("assistiveDevice")).trim(),
@@ -1356,6 +1707,9 @@ async function handleCaseSubmit(event) {
     careManagerPhone: String(form.get("careManagerPhone")).trim(),
     pickupAddress: String(form.get("pickupAddress")).trim(),
     destinationAddress: String(form.get("destinationAddress")).trim(),
+    communitySite: String(form.get("communitySite")).trim(),
+    quotaNote: String(form.get("quotaNote")).trim(),
+    destinations,
     rideNote: String(form.get("rideNote")).trim(),
     note: String(form.get("note")).trim(),
     active: existingCase?.active ?? true,
@@ -1378,6 +1732,7 @@ async function handleCaseSubmit(event) {
               driverId: String(form.get("driverId")),
               scheduledPickup: String(form.get("scheduledPickup")),
               scheduledDropoff: String(form.get("scheduledDropoff")),
+              destinationAddress: String(form.get("tripDestination")).trim() || String(form.get("destinationAddress")).trim(),
             }
           : null,
       });
@@ -1416,6 +1771,7 @@ async function handleCaseSubmit(event) {
       driverId: String(form.get("driverId")),
       scheduledPickup: String(form.get("scheduledPickup")),
       scheduledDropoff: String(form.get("scheduledDropoff")),
+      destinationAddress: String(form.get("tripDestination")).trim() || newCase.destinationAddress,
       pickupTime: "",
       pickupAt: "",
       pickupLocation: null,

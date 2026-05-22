@@ -145,6 +145,10 @@
                 <h3>今日班表</h3>
               </div>
               <div class="filter-row">
+                <button class="secondary-btn export-btn" type="button" id="exportReimbursementBtn">
+                  <span class="material-symbols-outlined" aria-hidden="true">table_view</span>
+                  匯出核銷Excel
+                </button>
                 <label>
                   司機
                   <select id="driverFilter"></select>
@@ -241,8 +245,20 @@
               <input name="birthDate" type="date" />
             </label>
             <label>
-              聯絡電話
+              福利身分
+              <input name="welfareStatus" placeholder="第三類(一般戶)" />
+            </label>
+            <label>
+              主要電話
               <input required name="phone" inputmode="tel" />
+            </label>
+            <label>
+              室內電話
+              <input name="landlinePhone" inputmode="tel" placeholder="03-9300000" />
+            </label>
+            <label>
+              手機
+              <input name="mobilePhone" inputmode="tel" placeholder="0912-345678" />
             </label>
             <label>
               緊急聯絡人
@@ -255,6 +271,10 @@
             <label>
               緊急電話
               <input name="emergencyPhone" inputmode="tel" />
+            </label>
+            <label class="full">
+              其他緊急聯絡人
+              <textarea name="emergencyContactsText" rows="3" placeholder="每行一位：姓名｜關係｜電話"></textarea>
             </label>
             <label>
               照顧等級
@@ -299,6 +319,18 @@
               目的地
               <input required name="destinationAddress" />
             </label>
+            <label>
+              社區據點
+              <select name="communitySite" id="communitySiteSelect"></select>
+            </label>
+            <label>
+              額度/身分備註
+              <input name="quotaNote" placeholder="例如：15460、交通額度備註" />
+            </label>
+            <label class="full">
+              常用目的地
+              <textarea name="destinationsText" rows="3" placeholder="每行一處：據點名稱｜地址；可包含日照、復健、社區據點等不同目的地"></textarea>
+            </label>
             <label class="full">
               接送注意事項
               <textarea name="rideNote" rows="2"></textarea>
@@ -319,6 +351,10 @@
               <label>
                 指派司機
                 <select name="driverId" id="caseDriverSelect"></select>
+              </label>
+              <label>
+                接送目的地
+                <input name="tripDestination" placeholder="不填則使用預設目的地" />
               </label>
             </div>
             <label class="check-row full">

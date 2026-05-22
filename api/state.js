@@ -318,9 +318,13 @@ function mapCase(person) {
     gender: person.gender || "",
     birthDate: person.birth_date || "",
     phone: person.phone || "",
+    landlinePhone: person.phone_landline || "",
+    mobilePhone: person.mobile_phone || "",
+    welfareStatus: person.welfare_status || "",
     emergencyContact: person.emergency_contact || "",
     emergencyRelation: person.emergency_relation || "",
     emergencyPhone: person.emergency_phone || "",
+    emergencyContacts: person.emergency_contacts || [],
     careLevel: person.care_level || "",
     mobility: person.mobility_type || "",
     assistiveDevice: person.assistive_device || "",
@@ -329,6 +333,9 @@ function mapCase(person) {
     careManagerPhone: person.care_manager_phone || "",
     pickupAddress: person.pickup_address,
     destinationAddress: person.default_destination,
+    communitySite: person.community_site || "",
+    quotaNote: person.quota_note || "",
+    destinations: person.destinations || [],
     rideNote: person.ride_note || "",
     note: person.notes || "",
     active: person.active,
@@ -349,6 +356,7 @@ function mapTrip(trip) {
     dropoffTime: trip.dropoff_at ? localTime(new Date(trip.dropoff_at)) : "",
     dropoffAt: iso(trip.dropoff_at),
     dropoffLocation: trip.dropoff_lat && trip.dropoff_lng ? locationObject(trip.dropoff_lat, trip.dropoff_lng, "gps") : null,
+    destinationAddress: trip.destination_address || "",
     purpose: trip.purpose || "",
     status: trip.status,
   };
@@ -394,11 +402,7 @@ async function handleAction(action, payload = {}) {
   if (action === "create_case") {
     const duplicate = await findDuplicateCase(payload.case);
     if (duplicate) throw new Error(duplicate);
-    const person = await supabase("cases", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(casePayload(payload.case)),
-    });
+    const person = await writeCase("POST", "cases", payload.case);
 
     if (payload.trip) {
       await supabase("daily_rides", {
@@ -411,7 +415,7 @@ async function handleAction(action, payload = {}) {
           scheduled_pickup: payload.trip.scheduledPickup,
           scheduled_dropoff: payload.trip.scheduledDropoff,
           pickup_address: payload.case.pickupAddress,
-          destination_address: payload.case.destinationAddress,
+          destination_address: payload.trip.destinationAddress || payload.case.destinationAddress,
           purpose: "日照接送",
         }),
       });
@@ -421,11 +425,7 @@ async function handleAction(action, payload = {}) {
   if (action === "update_case") {
     const duplicate = await findDuplicateCase(payload.case, payload.case.id);
     if (duplicate) throw new Error(duplicate);
-    await supabase(`cases?id=eq.${encodeURIComponent(payload.case.id)}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(casePayload(payload.case)),
-    });
+    await writeCase("PATCH", `cases?id=eq.${encodeURIComponent(payload.case.id)}`, payload.case);
   }
 
   if (action === "toggle_case") {
@@ -525,11 +525,14 @@ async function findDuplicateCase(person, editingId = "") {
   const filters = [`case_no.eq.${encodeURIComponent(person.caseNo)}`];
   if (person.identityNo) filters.push(`identity_no.eq.${encodeURIComponent(person.identityNo)}`);
   if (person.name && person.phone) {
-    filters.push(`and(full_name.eq.${encodeURIComponent(person.name)},phone.eq.${encodeURIComponent(person.phone)})`);
+    filters.push(`phone.eq.${encodeURIComponent(person.phone)}`);
   }
 
   const rows = await supabase(`cases?select=id,case_no,full_name,identity_no,phone&or=(${filters.join(",")})`);
-  const duplicate = rows.find((row) => row.id !== editingId);
+  const duplicate = rows.find((row) => {
+    if (row.id === editingId) return false;
+    return row.case_no === person.caseNo || (person.identityNo && row.identity_no === person.identityNo) || (row.full_name === person.name && row.phone === person.phone);
+  });
   if (!duplicate) return "";
   if (duplicate.case_no === person.caseNo) return `個案編號 ${person.caseNo} 已存在，請勿重複新增。`;
   if (person.identityNo && duplicate.identity_no === person.identityNo) return `身分證字號 ${person.identityNo} 已存在於 ${duplicate.full_name}。`;
@@ -540,19 +543,44 @@ async function findDuplicateDriver(driver, editingId = "") {
   const filters = [`vehicle_no.eq.${encodeURIComponent(driver.vehicleNo)}`];
   if (driver.identityNo) filters.push(`identity_no.eq.${encodeURIComponent(driver.identityNo)}`);
   if (driver.name && driver.phone) {
-    filters.push(`and(display_name.eq.${encodeURIComponent(driver.name)},phone.eq.${encodeURIComponent(driver.phone)})`);
+    filters.push(`phone.eq.${encodeURIComponent(driver.phone)}`);
   }
 
   const rows = await supabase(`drivers?select=id,display_name,identity_no,phone,vehicle_no&or=(${filters.join(",")})`);
-  const duplicate = rows.find((row) => row.id !== editingId);
+  const duplicate = rows.find((row) => {
+    if (row.id === editingId) return false;
+    return row.vehicle_no === driver.vehicleNo || (driver.identityNo && row.identity_no === driver.identityNo) || (row.display_name === driver.name && row.phone === driver.phone);
+  });
   if (!duplicate) return "";
   if (driver.identityNo && duplicate.identity_no === driver.identityNo) return `司機身分證字號 ${driver.identityNo} 已存在於 ${duplicate.display_name}。`;
   if (duplicate.vehicle_no === driver.vehicleNo) return `車號 ${driver.vehicleNo} 已由 ${duplicate.display_name} 使用。`;
   return `${driver.name} 與電話 ${driver.phone} 已存在，請確認是否重複新增。`;
 }
 
-function casePayload(person) {
-  return {
+async function writeCase(method, path, person) {
+  try {
+    return await supabase(path, {
+      method,
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(casePayload(person)),
+    });
+  } catch (error) {
+    if (!isMissingColumnError(error)) throw error;
+    return supabase(path, {
+      method,
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(casePayload(person, false)),
+    });
+  }
+}
+
+function isMissingColumnError(error) {
+  const message = String(error?.message || "");
+  return /PGRST204|schema cache|column .* does not exist|Could not find.*column/i.test(message);
+}
+
+function casePayload(person, includeExtended = true) {
+  const payload = {
     case_no: person.caseNo,
     full_name: person.name,
     identity_no: person.identityNo || null,
@@ -573,6 +601,19 @@ function casePayload(person) {
     ride_note: person.rideNote || null,
     notes: person.note || null,
     active: person.active ?? true,
+  };
+
+  if (!includeExtended) return payload;
+
+  return {
+    ...payload,
+    phone_landline: person.landlinePhone || null,
+    mobile_phone: person.mobilePhone || null,
+    welfare_status: person.welfareStatus || null,
+    community_site: person.communitySite || null,
+    quota_note: person.quotaNote || null,
+    emergency_contacts: Array.isArray(person.emergencyContacts) ? person.emergencyContacts : [],
+    destinations: Array.isArray(person.destinations) ? person.destinations : [],
   };
 }
 
