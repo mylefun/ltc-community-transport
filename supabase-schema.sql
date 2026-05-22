@@ -602,6 +602,7 @@ $$;
 grant execute on function public.mark_ride_pickup(uuid, numeric, numeric, integer, text) to authenticated;
 grant execute on function public.mark_ride_dropoff(uuid, numeric, numeric, integer, text) to authenticated;
 
+drop view if exists public.daily_ride_board;
 create or replace view public.daily_ride_board
 with (security_invoker = true)
 as
@@ -631,6 +632,7 @@ from public.daily_rides r
 join public.cases c on c.id = r.case_id
 join public.drivers d on d.id = r.driver_id;
 
+drop view if exists public.driver_location_board;
 create or replace view public.driver_location_board
 with (security_invoker = true)
 as
