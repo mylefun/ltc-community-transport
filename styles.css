@@ -714,9 +714,9 @@ body[data-view="home"] .view-host {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 92px;
-  padding: 18px 20px;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 16px;
   color: white;
   background: var(--brand);
   border-radius: 18px;
@@ -730,17 +730,17 @@ body[data-view="home"] .view-host {
 .fleet-status-strip strong {
   display: block;
   margin-top: 3px;
-  font-size: 20px;
+  font-size: 15px;
 }
 
 .fleet-status-strip .material-symbols-outlined {
-  width: 52px;
-  height: 52px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  font-size: 28px;
+  font-size: 20px;
 }
 
 .summary-grid {
@@ -1600,6 +1600,17 @@ textarea {
   box-shadow: var(--shadow-soft);
 }
 
+.delete-trip-btn {
+  color: var(--red) !important;
+  background: rgba(186, 26, 26, 0.08) !important;
+  border-color: rgba(186, 26, 26, 0.16) !important;
+}
+
+.delete-trip-btn:hover {
+  background: rgba(186, 26, 26, 0.16) !important;
+  color: var(--red) !important;
+}
+
 .split-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
@@ -2025,7 +2036,7 @@ textarea {
   max-width: none;
 }
 
-.modal-close-btn {
+.pin-dialog .modal-close-btn {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -2710,6 +2721,10 @@ body[data-view="home"] .notification-container {
   border: 2px solid var(--surface);
   box-shadow: 0 2px 5px rgba(186, 26, 26, 0.4);
   animation: pulse-badge 2s infinite;
+}
+
+.notification-badge[hidden] {
+  display: none !important;
 }
 
 @keyframes pulse-badge {

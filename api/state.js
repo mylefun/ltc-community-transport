@@ -10,6 +10,7 @@ const coordinatorActions = new Set([
   "toggle_driver",
   "delete_driver",
   "create_trip",
+  "delete_trip",
   "create_schedule",
   "update_schedule",
   "delete_schedule",
@@ -624,6 +625,13 @@ async function handleAction(action, payload = {}) {
         purpose: "臨時接送",
         schedule_id: null,
       }),
+    });
+  }
+
+  if (action === "delete_trip") {
+    await supabase(`daily_rides?id=eq.${encodeURIComponent(payload.tripId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
     });
   }
 

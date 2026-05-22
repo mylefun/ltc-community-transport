@@ -22,6 +22,7 @@ const coordinatorActions = new Set([
   "toggle_driver",
   "delete_driver",
   "create_trip",
+  "delete_trip",
   "create_schedule",
   "update_schedule",
   "delete_schedule",
@@ -64,6 +65,17 @@ const communitySites = [
 ];
 
 const releaseNotes = [
+  {
+    version: "v0.7.3",
+    date: "2026-05-23",
+    items: [
+      "今日接送班表新增刪除個別或臨時接送班次功能",
+      "修正異常回報視窗右上角關閉按鈕「X」的顯示問題",
+      "修正未讀通知計數為 0 時，紅色通知角標能完全隱藏",
+      "移除頂部導覽列頭像「LC」",
+      "調整右下角「即時車隊狀態」面板至更精緻輕巧的版面",
+    ],
+  },
   {
     version: "v0.7.2",
     date: "2026-05-22",
@@ -1355,6 +1367,35 @@ function renderDashboard() {
     saveState();
     renderDashboard();
   });
+
+  board.addEventListener("click", (event) => {
+    const btn = event.target.closest(".delete-trip-btn");
+    if (!btn) return;
+    const tripId = btn.dataset.tripId;
+    const trip = state.trips.find((item) => item.id === tripId);
+    if (!trip) return;
+    const person = getCase(trip.caseId);
+    const caseName = person ? person.name : "此接送";
+    if (!window.confirm(`確定刪除個案「${caseName}」今日的這筆接送班次？`)) return;
+
+    if (dataMode === "supabase") {
+      apiAction("delete_trip", { tripId })
+        .then(() => {
+          addNotification(`已刪除「${caseName}」今日的接送班次`, true);
+          renderDashboard();
+        })
+        .catch((error) => {
+          dataMessage = `刪除失敗：${error.message}`;
+          addNotification(`刪除失敗：${error.message}`, false);
+          renderDashboard();
+        });
+      return;
+    }
+    state.trips = state.trips.filter((item) => item.id !== tripId);
+    saveState();
+    addNotification(`已刪除「${caseName}」今日的接送班次`, true);
+    renderDashboard();
+  });
 }
 
 function scheduleDaysText(schedule) {
@@ -2412,6 +2453,9 @@ function renderRideRow(trip) {
           <a class="route-icon-btn" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(driver?.name ?? "司機")} 的 Google 地圖路徑" title="開啟 Google 地圖路徑">
             <span class="material-symbols-outlined" aria-hidden="true">map</span>
           </a>
+          <button class="route-icon-btn delete-trip-btn" type="button" data-trip-id="${escapeHTML(trip.id)}" aria-label="刪除此班次" title="刪除此班次">
+            <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          </button>
         </div>
         <div class="dispatch-meta">
           <div class="dispatch-time">
