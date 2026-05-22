@@ -1200,8 +1200,7 @@ function renderDashboard() {
   });
 
   document.getElementById("mapDriverCount").textContent = `${state.drivers.length} 位司機`;
-  document.getElementById("liveMap").innerHTML = renderDriverMap();
-  setupMapControls();
+  initOrUpdateLeafletMap();
 
   const driverFilter = document.getElementById("driverFilter");
   driverFilter.innerHTML = [
@@ -1711,91 +1710,276 @@ async function handleScheduleAction(event) {
   }
 }
 
-function renderDriverMap() {
-  const routeLines = todayTrips()
-    .filter((trip) => getTripStatus(trip) !== "completed")
-    .map(renderMapRoute)
-    .join("");
+// Persistent Leaflet map variables to survive dashboard DOM replacement
+let leafletMapInstance = null;
+let leafletMapCanvas = null;
+let leafletMarkersGroup = null;
+let leafletRoutesGroup = null;
+let hasInitialFit = false;
 
-  const driverMarkers = state.drivers.map((driver) => {
+// We hook requestView to reset hasInitialFit so when they switch views and come back, we fit bounds again
+const originalRequestView = requestView;
+requestView = function(view) {
+  if (view !== "dashboard") {
+    hasInitialFit = false;
+  }
+  originalRequestView(view);
+};
+
+function initOrUpdateLeafletMap() {
+  const container = document.getElementById("liveMap");
+  if (!container) return;
+
+  // Initialize leaflet components if not done yet
+  if (!leafletMapInstance) {
+    leafletMapCanvas = document.createElement("div");
+    leafletMapCanvas.id = "leafletMapCanvas";
+    leafletMapCanvas.style.width = "100%";
+    leafletMapCanvas.style.height = "100%";
+    leafletMapCanvas.style.position = "absolute";
+    leafletMapCanvas.style.inset = "0";
+    leafletMapCanvas.style.zIndex = "1";
+
+    // Create Leaflet instance
+    leafletMapInstance = L.map(leafletMapCanvas, {
+      zoomControl: false,
+      attributionControl: false,
+      center: [25.0394, 121.5205],
+      zoom: 12
+    });
+
+    // Use Google Maps tile layer
+    L.tileLayer("https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", {
+      maxZoom: 20,
+      subdomains: ["mt0", "mt1", "mt2", "mt3"]
+    }).addTo(leafletMapInstance);
+
+    leafletMarkersGroup = L.layerGroup().addTo(leafletMapInstance);
+    leafletRoutesGroup = L.layerGroup().addTo(leafletMapInstance);
+
+    // Update custom zoom controls scale percentage when map zoom changes
+    leafletMapInstance.on("zoomend", () => {
+      const zoomLabel = document.querySelector(".map-zoom-label");
+      if (zoomLabel) {
+        const scalePct = Math.round((leafletMapInstance.getZoom() / 12) * 100);
+        zoomLabel.textContent = `${scalePct}%`;
+      }
+    });
+  }
+
+  // Clear container and append the map canvas
+  container.innerHTML = "";
+  container.appendChild(leafletMapCanvas);
+
+  // Add the controls & help HTML
+  const controlsDiv = document.createElement("div");
+  controlsDiv.className = "map-controls";
+  controlsDiv.setAttribute("aria-label", "地圖縮放控制");
+  
+  const scalePct = Math.round((leafletMapInstance.getZoom() / 12) * 100);
+  controlsDiv.innerHTML = `
+    <button class="map-control-btn" type="button" data-map-action="zoom-out" aria-label="縮小地圖">−</button>
+    <output class="map-zoom-label" aria-label="目前縮放倍率">${scalePct}%</output>
+    <button class="map-control-btn" type="button" data-map-action="zoom-in" aria-label="放大地圖">+</button>
+    <button class="map-reset-btn" type="button" data-map-action="reset">重設</button>
+  `;
+  container.appendChild(controlsDiv);
+
+  const helpDiv = document.createElement("div");
+  helpDiv.className = "map-help";
+  helpDiv.textContent = "拖曳平移 · 滾輪縮放 · 縮小可看全體司機";
+  container.appendChild(helpDiv);
+
+  // Bind controls event listeners
+  controlsDiv.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-map-action]")?.dataset.mapAction;
+    if (!action) return;
+    if (action === "zoom-in") {
+      leafletMapInstance.zoomIn();
+    } else if (action === "zoom-out") {
+      leafletMapInstance.zoomOut();
+    } else if (action === "reset") {
+      fitAllMapBounds(true);
+    }
+  });
+
+  // Schedule size invalidation to run after the browser handles layout
+  setTimeout(() => {
+    leafletMapInstance.invalidateSize();
+  }, 0);
+
+  // Update data layers
+  updateLeafletData();
+}
+
+function updateLeafletData() {
+  if (!leafletMapInstance) return;
+
+  leafletMarkersGroup.clearLayers();
+  leafletRoutesGroup.clearLayers();
+
+  const allPoints = [];
+
+  // 1. Draw driver markers
+  state.drivers.forEach((driver) => {
     const location = state.driverLocations[driver.id] ?? {
       ...driver.homeLocation,
       updatedAt: "",
       eventType: "heartbeat",
     };
-    const point = mapPoint(location);
-    const status = getDriverLiveStatus(driver.id);
-    return `
-      <button
-        class="map-marker ${escapeHTML(status)}"
-        type="button"
-        style="left:${point.x}%; top:${point.y}%"
-        title="${escapeHTML(driver.name)} ${escapeHTML(formatCoordinate(location))}"
-      >
-        <span>${escapeHTML(driver.name.slice(0, 1))}</span>
-      </button>
-      <div class="map-label" style="left:${point.x}%; top:${Math.min(point.y + 8, 92)}%">
-        <strong>${escapeHTML(driver.name)}</strong>
-        <span>${escapeHTML(eventLabels[location.eventType] ?? "目前位置")} · ${escapeHTML(formatEventTime(location.updatedAt))}</span>
-      </div>
-    `;
+    if (location && location.lat && location.lng) {
+      const latVal = Number(location.lat);
+      const lngVal = Number(location.lng);
+      allPoints.push([latVal, lngVal]);
+
+      const status = getDriverLiveStatus(driver.id);
+      const html = `
+        <div class="driver-marker-leaflet-inner">
+          <button
+            class="map-marker ${escapeHTML(status)}"
+            type="button"
+            title="${escapeHTML(driver.name)} ${escapeHTML(formatCoordinate(location))}"
+          >
+            <span>${escapeHTML(driver.name.slice(0, 1))}</span>
+          </button>
+          <div class="map-label">
+            <strong>${escapeHTML(driver.name)}</strong>
+            <span>${escapeHTML(eventLabels[location.eventType] ?? "目前位置")} · ${escapeHTML(formatEventTime(location.updatedAt))}</span>
+          </div>
+        </div>
+      `;
+
+      const marker = L.marker([latVal, lngVal], {
+        icon: L.divIcon({
+          className: "driver-marker-leaflet",
+          html: html,
+          iconSize: [42, 42],
+          iconAnchor: [21, 21]
+        })
+      });
+      marker.addTo(leafletMarkersGroup);
+    }
   });
 
-  return `
-    <div class="map-controls" aria-label="地圖縮放控制">
-      <button class="map-control-btn" type="button" data-map-action="zoom-out" aria-label="縮小地圖">−</button>
-      <output class="map-zoom-label" aria-label="目前縮放倍率">${Math.round(mapView.zoom * 100)}%</output>
-      <button class="map-control-btn" type="button" data-map-action="zoom-in" aria-label="放大地圖">+</button>
-      <button class="map-reset-btn" type="button" data-map-action="reset">重設</button>
-    </div>
-    <div class="map-help">拖曳平移 · 滾輪縮放 · 縮小可看全體司機</div>
-    <div
-      class="map-canvas"
-      style="transform: translate(${mapView.panX}px, ${mapView.panY}px) scale(${mapView.zoom})"
-    >
-      <div class="map-grid-lines" aria-hidden="true"></div>
-      <svg class="map-routes" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        ${routeLines}
-      </svg>
-      <div class="map-road horizontal road-a" aria-hidden="true"></div>
-      <div class="map-road horizontal road-b" aria-hidden="true"></div>
-      <div class="map-road vertical road-c" aria-hidden="true"></div>
-      <div class="map-road vertical road-d" aria-hidden="true"></div>
-      <span class="map-district district-north">士林 / 中山</span>
-      <span class="map-district district-west">萬華 / 中正</span>
-      <span class="map-district district-east">大安 / 信義</span>
-      ${driverMarkers.join("")}
-    </div>
-  `;
+  // 2. Draw trip routes
+  const activeTrips = todayTrips().filter((trip) => getTripStatus(trip) !== "completed");
+  activeTrips.forEach((trip) => {
+    const person = getCase(trip.caseId);
+    const driver = getDriver(trip.driverId);
+    if (!person || !driver) return;
+
+    const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
+    const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
+    const driverLocation = state.driverLocations[trip.driverId];
+    const status = getTripStatus(trip);
+
+    const start = status === "picked_up" && driverLocation ? driverLocation : pickup;
+    const end = destination;
+
+    if (start && start.lat && start.lng && end && end.lat && end.lng) {
+      const startLatLng = [Number(start.lat), Number(start.lng)];
+      const endLatLng = [Number(end.lat), Number(end.lng)];
+
+      allPoints.push(startLatLng);
+      allPoints.push(endLatLng);
+
+      const strokeClass = status === "picked_up" ? "active" : status === "late" ? "late" : "scheduled";
+
+      // Draw polyline
+      const polyline = L.polyline([startLatLng, endLatLng], {
+        className: `route-line ${strokeClass}`,
+        color: status === "picked_up" ? "#168052" : status === "late" ? "#be3f36" : "#2764a5",
+        weight: status === "picked_up" ? 3.5 : 2.5,
+        dashArray: status === "picked_up" ? null : "4, 4"
+      });
+      polyline.addTo(leafletRoutesGroup);
+
+      // Draw start circle marker
+      const startDot = L.circleMarker(startLatLng, {
+        className: "route-dot start",
+        radius: 5.5,
+        fillColor: "#ffffff",
+        fillOpacity: 1,
+        color: "rgba(23, 33, 43, 0.4)",
+        weight: 1.5
+      });
+      startDot.addTo(leafletRoutesGroup);
+
+      // Draw end circle marker
+      const endDot = L.circleMarker(endLatLng, {
+        className: "route-dot end",
+        radius: 5.5,
+        fillColor: "#fbc02d",
+        fillOpacity: 1,
+        color: "rgba(23, 33, 43, 0.4)",
+        weight: 1.5
+      });
+      endDot.addTo(leafletRoutesGroup);
+
+      // Draw midpoint route label
+      const midLatLng = [
+        (Number(start.lat) + Number(end.lat)) / 2,
+        (Number(start.lng) + Number(end.lng)) / 2
+      ];
+      const labelText = `${driver.name.slice(0, 1)}-${person.name.slice(0, 1)}`;
+      const routeLabelMarker = L.marker(midLatLng, {
+        icon: L.divIcon({
+          className: "route-label-leaflet",
+          html: `<span>${escapeHTML(labelText)}</span>`,
+          iconSize: null,
+          iconAnchor: [20, 10]
+        }),
+        interactive: false
+      });
+      routeLabelMarker.addTo(leafletRoutesGroup);
+    }
+  });
+
+  // Fit bounds on first render of the map
+  if (!hasInitialFit && allPoints.length > 0) {
+    fitAllMapBounds(false);
+    hasInitialFit = true;
+  }
 }
 
-function renderMapRoute(trip) {
-  const person = getCase(trip.caseId);
-  const driver = getDriver(trip.driverId);
-  if (!person || !driver) return "";
+function fitAllMapBounds(force = false) {
+  if (!leafletMapInstance) return;
 
-  const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
-  const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
-  const driverLocation = state.driverLocations[trip.driverId];
-  const status = getTripStatus(trip);
-  const start = status === "picked_up" && driverLocation ? driverLocation : pickup;
-  const end = status === "picked_up" ? destination : destination;
-  const mid = status === "picked_up" && driverLocation ? mapPoint(driverLocation) : null;
-  const startPoint = mapPoint(start);
-  const endPoint = mapPoint(end);
-  const strokeClass = status === "picked_up" ? "active" : status === "late" ? "late" : "scheduled";
-  const path = mid
-    ? `M ${startPoint.x} ${startPoint.y} Q ${(startPoint.x + endPoint.x) / 2} ${Math.min(startPoint.y, endPoint.y) - 10} ${endPoint.x} ${endPoint.y}`
-    : `M ${startPoint.x} ${startPoint.y} L ${endPoint.x} ${endPoint.y}`;
+  const allPoints = [];
 
-  return `
-    <path class="route-line ${strokeClass}" d="${path}" />
-    <circle class="route-dot start" cx="${startPoint.x}" cy="${startPoint.y}" r="1.35" />
-    <circle class="route-dot end" cx="${endPoint.x}" cy="${endPoint.y}" r="1.35" />
-    <text class="route-label" x="${(startPoint.x + endPoint.x) / 2}" y="${(startPoint.y + endPoint.y) / 2}">
-      ${escapeHTML(driver.name.slice(0, 1))}-${escapeHTML(person.name.slice(0, 1))}
-    </text>
-  `;
+  // Collect driver locations
+  state.drivers.forEach((driver) => {
+    const location = state.driverLocations[driver.id] ?? driver.homeLocation;
+    if (location && location.lat && location.lng) {
+      allPoints.push([Number(location.lat), Number(location.lng)]);
+    }
+  });
+
+  // Collect active routes pickup & dropoff locations
+  const activeTrips = todayTrips().filter((trip) => getTripStatus(trip) !== "completed");
+  activeTrips.forEach((trip) => {
+    const person = getCase(trip.caseId);
+    if (!person) return;
+    const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
+    const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
+    if (pickup && pickup.lat && pickup.lng) {
+      allPoints.push([Number(pickup.lat), Number(pickup.lng)]);
+    }
+    if (destination && destination.lat && destination.lng) {
+      allPoints.push([Number(destination.lat), Number(destination.lng)]);
+    }
+  });
+
+  if (allPoints.length > 0) {
+    const bounds = L.latLngBounds(allPoints);
+    leafletMapInstance.fitBounds(bounds, {
+      padding: [40, 40],
+      maxZoom: 15
+    });
+  } else {
+    // Default fallback center to Taipei
+    leafletMapInstance.setView([25.0394, 121.5205], 12);
+  }
 }
 
 function caseCoordinate(caseId, type) {
@@ -1812,96 +1996,6 @@ function caseCoordinate(caseId, type) {
   return {
     lat: Number((25.018 + (seed % 70) * 0.0011).toFixed(6)),
     lng: Number((121.49 + (seed % 85) * 0.0011).toFixed(6)),
-  };
-}
-
-function setupMapControls() {
-  const map = document.getElementById("liveMap");
-  if (!map) return;
-
-  map.addEventListener("click", (event) => {
-    const action = event.target.closest("[data-map-action]")?.dataset.mapAction;
-    if (!action) return;
-    if (action === "zoom-in") setMapZoom(mapView.zoom + 0.25);
-    if (action === "zoom-out") setMapZoom(mapView.zoom - 0.25);
-    if (action === "reset") {
-      mapView = { zoom: 1, panX: 0, panY: 0 };
-      renderDashboard();
-    }
-  });
-
-  map.addEventListener(
-    "wheel",
-    (event) => {
-      event.preventDefault();
-      setMapZoom(mapView.zoom + (event.deltaY < 0 ? 0.12 : -0.12));
-    },
-    { passive: false },
-  );
-
-  map.addEventListener("pointerdown", (event) => {
-    if (event.target.closest("button")) return;
-    mapDrag = {
-      startX: event.clientX,
-      startY: event.clientY,
-      panX: mapView.panX,
-      panY: mapView.panY,
-    };
-    map.classList.add("dragging");
-    map.setPointerCapture(event.pointerId);
-  });
-
-  map.addEventListener("pointermove", (event) => {
-    if (!mapDrag) return;
-    mapView.panX = clamp(mapDrag.panX + event.clientX - mapDrag.startX, -260, 260);
-    mapView.panY = clamp(mapDrag.panY + event.clientY - mapDrag.startY, -210, 210);
-    updateMapTransform();
-  });
-
-  map.addEventListener("pointerup", (event) => {
-    mapDrag = null;
-    map.classList.remove("dragging");
-    try {
-      map.releasePointerCapture(event.pointerId);
-    } catch {
-      // Pointer may already be released by the browser.
-    }
-  });
-
-  map.addEventListener("pointercancel", () => {
-    mapDrag = null;
-    map.classList.remove("dragging");
-  });
-}
-
-function setMapZoom(nextZoom) {
-  mapView.zoom = clamp(Number(nextZoom.toFixed(2)), 0.65, 2.5);
-  mapView.panX = clamp(mapView.panX, -260, 260);
-  mapView.panY = clamp(mapView.panY, -210, 210);
-  updateMapTransform();
-}
-
-function updateMapTransform() {
-  const canvas = document.querySelector(".map-canvas");
-  const label = document.querySelector(".map-zoom-label");
-  if (canvas) {
-    canvas.style.transform = `translate(${mapView.panX}px, ${mapView.panY}px) scale(${mapView.zoom})`;
-  }
-  if (label) {
-    label.textContent = `${Math.round(mapView.zoom * 100)}%`;
-  }
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function mapPoint(location) {
-  const x = ((Number(location.lng) - taipeiBounds.minLng) / (taipeiBounds.maxLng - taipeiBounds.minLng)) * 100;
-  const y = 100 - ((Number(location.lat) - taipeiBounds.minLat) / (taipeiBounds.maxLat - taipeiBounds.minLat)) * 100;
-  return {
-    x: Math.max(5, Math.min(95, Number(x.toFixed(2)))),
-    y: Math.max(8, Math.min(88, Number(y.toFixed(2)))),
   };
 }
 
@@ -2107,34 +2201,73 @@ function renderRideRow(trip) {
     .join("");
 
   return `
-    <article class="ride-row">
-      <div class="ride-time">
-        <span class="subtext">預定上車</span>
-        <strong>${escapeHTML(trip.scheduledPickup)}</strong>
-        <span class="subtext">送達</span>
-        <strong>${escapeHTML(trip.scheduledDropoff)}</strong>
-      </div>
-      <div class="ride-person">
-        <strong>${escapeHTML(person?.name ?? "未知個案")}</strong>
-        <p class="subtext">${escapeHTML(person?.caseNo ?? "")} · ${escapeHTML(person?.careLevel ?? "")} · ${escapeHTML(person?.mobility ?? "")}</p>
-        <p class="subtext">${escapeHTML(trip.purpose)}</p>
-      </div>
-      <div>
-        <p class="subtext">上車：${escapeHTML(person?.pickupAddress ?? "")}</p>
-        <p class="subtext">目的地：${escapeHTML(destination)}</p>
-      </div>
-      <label>
-        指派司機
-        <select class="driver-select" data-trip-id="${escapeHTML(trip.id)}">${options}</select>
-      </label>
-      <div class="status-column">
+    <article class="ride-row ${escapeHTML(status)}">
+      <!-- Column 1: Time & Status -->
+      <div class="ride-time-status">
+        <div class="time-block">
+          <div class="time-item">
+            <span class="time-label">上車</span>
+            <strong class="time-val">${escapeHTML(trip.scheduledPickup)}</strong>
+          </div>
+          <div class="time-divider">↓</div>
+          <div class="time-item">
+            <span class="time-label">送達</span>
+            <strong class="time-val">${escapeHTML(trip.scheduledDropoff)}</strong>
+          </div>
+        </div>
         <span class="status-pill ${escapeHTML(status)}">${escapeHTML(statusLabels[status])}</span>
-        <p class="subtext">${escapeHTML(driver?.vehicleNo ?? "")}</p>
-        <p class="subtext">接到 ${escapeHTML(trip.pickupTime || "--:--")} · 送達 ${escapeHTML(trip.dropoffTime || "--:--")}</p>
-        <p class="subtext">定位 ${escapeHTML(formatEventTime(state.driverLocations[trip.driverId]?.updatedAt))}</p>
-        <a class="route-icon-btn" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(driver?.name ?? "司機")} 的 Google 地圖路徑" title="開啟 Google 地圖路徑">
-          <span class="material-symbols-outlined" aria-hidden="true">map</span>
-        </a>
+      </div>
+
+      <!-- Column 2: Case Details -->
+      <div class="ride-person">
+        <div class="person-name-row">
+          <strong class="person-name">${escapeHTML(person?.name ?? "未知個案")}</strong>
+          <span class="purpose-badge">${escapeHTML(trip.purpose)}</span>
+        </div>
+        <p class="person-meta">${escapeHTML(person?.caseNo ?? "")} · ${escapeHTML(person?.careLevel ?? "")}</p>
+        <p class="person-mobility">${escapeHTML(person?.mobility ?? "")}</p>
+      </div>
+
+      <!-- Column 3: Route -->
+      <div class="ride-route">
+        <div class="route-item pickup">
+          <span class="route-dot-icon">●</span>
+          <div class="route-details">
+            <span class="route-label">上車：</span>
+            <span class="route-address">${escapeHTML(person?.pickupAddress ?? "")}</span>
+          </div>
+        </div>
+        <div class="route-item dropoff">
+          <span class="route-dot-icon">▼</span>
+          <div class="route-details">
+            <span class="route-label">目的：</span>
+            <span class="route-address">${escapeHTML(destination)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 4: Driver & Tracking -->
+      <div class="ride-dispatch">
+        <div class="driver-assign-row">
+          <label>
+            <span>指派司機</span>
+            <select class="driver-select" data-trip-id="${escapeHTML(trip.id)}">${options}</select>
+          </label>
+          <a class="route-icon-btn" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(driver?.name ?? "司機")} 的 Google 地圖路徑" title="開啟 Google 地圖路徑">
+            <span class="material-symbols-outlined" aria-hidden="true">map</span>
+          </a>
+        </div>
+        <div class="dispatch-meta">
+          <div class="dispatch-time">
+            <span>接到 ${escapeHTML(trip.pickupTime || "--:--")}</span>
+            <span class="dot-sep">·</span>
+            <span>送達 ${escapeHTML(trip.dropoffTime || "--:--")}</span>
+          </div>
+          <div class="dispatch-loc">
+            <span class="material-symbols-outlined loc-icon" aria-hidden="true">my_location</span>
+            <span>定位 ${escapeHTML(formatEventTime(state.driverLocations[trip.driverId]?.updatedAt))}</span>
+          </div>
+        </div>
       </div>
     </article>
   `;
