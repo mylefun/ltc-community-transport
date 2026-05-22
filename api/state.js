@@ -367,6 +367,7 @@ function mapTrip(trip) {
     dropoffTime: trip.dropoff_at ? localTime(new Date(trip.dropoff_at)) : "",
     dropoffAt: iso(trip.dropoff_at),
     dropoffLocation: trip.dropoff_lat && trip.dropoff_lng ? locationObject(trip.dropoff_lat, trip.dropoff_lng, "gps") : null,
+    pickupAddress: trip.pickup_address || "",
     destinationAddress: trip.destination_address || "",
     purpose: trip.purpose || "",
     status: trip.status,
@@ -525,6 +526,24 @@ async function handleAction(action, payload = {}) {
           pickup_address: payload.case.pickupAddress,
           destination_address: payload.trip.destinationAddress || payload.case.destinationAddress,
           purpose: "日照接送",
+          schedule_id: null,
+        }),
+      });
+    }
+
+    if (payload.tripReturn) {
+      await supabase("daily_rides", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          service_date: todayKey(),
+          case_id: person[0].id,
+          driver_id: payload.tripReturn.driverId,
+          scheduled_pickup: payload.tripReturn.scheduledPickup,
+          scheduled_dropoff: payload.tripReturn.scheduledDropoff,
+          pickup_address: payload.tripReturn.pickupAddress,
+          destination_address: payload.tripReturn.destinationAddress,
+          purpose: "回程接送",
           schedule_id: null,
         }),
       });

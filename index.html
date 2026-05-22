@@ -386,6 +386,24 @@
               <input name="createTrip" type="checkbox" checked />
               <span>同步加入今日接送班表</span>
             </label>
+            <label class="check-row full" id="createReturnTripRow">
+              <input name="createReturnTrip" id="createReturnTripCheckbox" type="checkbox" />
+              <span>同步加入今日回程班表（回回程目的地，即個案上車地址）</span>
+            </label>
+            <div class="inline-fields full" id="caseReturnFields" style="display: none; border-top: 1px dashed rgba(0, 0, 0, 0.1); padding-top: 10px; margin-top: 5px;">
+              <label>
+                今日回程上車
+                <input name="scheduledPickupReturn" type="time" value="16:00" />
+              </label>
+              <label>
+                今日回程送達
+                <input name="scheduledDropoffReturn" type="time" value="16:30" />
+              </label>
+              <label>
+                回程指派司機
+                <select name="driverIdReturn" id="caseDriverSelectReturn"></select>
+              </label>
+            </div>
             <div class="form-actions full">
               <button class="primary-btn" type="submit" id="caseSubmitBtn">＋ 新增個案</button>
               <button class="ghost-btn" type="button" id="caseCancelBtn">清除</button>
@@ -610,6 +628,28 @@
                   服務項目
                   <input name="purpose" placeholder="日照接送、復健門診、據點活動..." />
                 </label>
+                <label class="check-row full" id="enableReturnTripRow">
+                  <input name="hasReturnTrip" id="hasReturnTripCheckbox" type="checkbox" />
+                  <span>啟用回程接送（去目的地接回，即起訖點對調）</span>
+                </label>
+                <div class="inline-fields full" id="scheduleReturnFields" style="display: none; border-top: 1px dashed rgba(0, 0, 0, 0.1); padding-top: 10px; margin-top: 5px;">
+                  <label>
+                    回程預定上車
+                    <input name="scheduledPickupReturn" type="time" value="16:00" />
+                  </label>
+                  <label>
+                    回程預定送達
+                    <input name="scheduledDropoffReturn" type="time" value="16:30" />
+                  </label>
+                  <label>
+                    回程指派司機
+                    <select name="driverIdReturn" id="scheduleDriverSelectReturn"></select>
+                  </label>
+                  <label class="full">
+                    回程服務項目
+                    <input name="purposeReturn" value="回程接送" placeholder="日照接送(回程)、回程接送..." />
+                  </label>
+                </div>
                 <label class="full">
                   特殊需求
                   <textarea name="specialRequirements" rows="2" placeholder="輪椅、陪同、須提前通知等"></textarea>

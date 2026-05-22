@@ -478,6 +478,7 @@ function buildTripFromSchedule(schedule, serviceDate) {
     dropoffTime: "",
     dropoffAt: "",
     dropoffLocation: null,
+    pickupAddress: fields.pickupAddress,
     destinationAddress: fields.destinationAddress,
     purpose: fields.purpose,
     status: "scheduled",
@@ -593,7 +594,8 @@ function normalizeState(value) {
     dropoffLocation: null,
     ...trip,
     scheduleId: trip.scheduleId || trip.schedule_id || "",
-    destinationAddress: trip.destinationAddress || next.cases.find((person) => person.id === trip.caseId)?.destinationAddress || "",
+    pickupAddress: trip.pickupAddress || trip.pickup_address || next.cases.find((person) => person.id === trip.caseId)?.pickupAddress || "",
+    destinationAddress: trip.destinationAddress || trip.destination_address || next.cases.find((person) => person.id === trip.caseId)?.destinationAddress || "",
   }));
 
   next.schedules = next.schedules.map((schedule) => {
@@ -1584,12 +1586,42 @@ function renderScheduleManager() {
   if (caseSelect) caseSelect.innerHTML = caseOptions;
   if (driverSelect) driverSelect.innerHTML = driverOptions;
   if (overrideDriverSelect) overrideDriverSelect.innerHTML = `<option value="">不變更</option>${driverOptions}`;
+  
+  const driverSelectReturn = document.getElementById("scheduleDriverSelectReturn");
+  if (driverSelectReturn) driverSelectReturn.innerHTML = driverOptions;
+
+  const hasReturnTripCheckbox = document.getElementById("hasReturnTripCheckbox");
+  if (hasReturnTripCheckbox) {
+    hasReturnTripCheckbox.addEventListener("change", (e) => {
+      const returnFields = document.getElementById("scheduleReturnFields");
+      if (returnFields) {
+        returnFields.style.display = e.target.checked ? "grid" : "none";
+      }
+    });
+  }
+
+  const enableReturnTripRow = document.getElementById("enableReturnTripRow");
+  if (enableReturnTripRow) {
+    enableReturnTripRow.style.display = editingScheduleId ? "none" : "flex";
+  }
+
+  if (editingScheduleId) {
+    if (hasReturnTripCheckbox) hasReturnTripCheckbox.checked = false;
+    const returnFields = document.getElementById("scheduleReturnFields");
+    if (returnFields) returnFields.style.display = "none";
+  } else {
+    // When creating a new schedule, make sure fields are initialized properly
+    if (hasReturnTripCheckbox && !hasReturnTripCheckbox.checked) {
+      const returnFields = document.getElementById("scheduleReturnFields");
+      if (returnFields) returnFields.style.display = "none";
+    }
+  }
 
   const formPanel = document.getElementById("scheduleFormPanel");
   const overridePanel = document.getElementById("scheduleOverridePanel");
   const isScheduleFormOpen = scheduleFormOpen || Boolean(editingScheduleId);
   formPanel.hidden = !isScheduleFormOpen;
-  overridePanel.hidden = !selectedScheduleId;
+  overridePanel.hidden = !scheduleOverrideOpen;
   if (editingScheduleId) fillScheduleForm(editingScheduleId);
   if (selectedScheduleId) fillScheduleOverrideForm(selectedScheduleId);
   if (!editingScheduleId && !scheduleFormOpen) fillScheduleForm("");
@@ -1683,6 +1715,34 @@ async function handleScheduleSubmit(event) {
         schedule: { ...schedule, id: nextScheduleId },
         serviceDate: state.serviceDate,
       });
+
+      if (!editingId && form.get("hasReturnTrip")) {
+        const nextScheduleReturnId = uid("sch");
+        const nextScheduleReturn = {
+          id: nextScheduleReturnId,
+          caseId: schedule.caseId,
+          driverId: String(form.get("driverIdReturn")) || schedule.driverId,
+          scheduleType: schedule.scheduleType,
+          serviceDate: schedule.serviceDate,
+          startDate: schedule.startDate,
+          endDate: schedule.endDate,
+          daysOfWeek: schedule.daysOfWeek,
+          scheduledPickup: String(form.get("scheduledPickupReturn")) || "16:00",
+          scheduledDropoff: String(form.get("scheduledDropoffReturn")) || "16:30",
+          pickupAddress: schedule.destinationAddress || getCase(schedule.caseId)?.destinationAddress || "",
+          destinationAddress: schedule.pickupAddress || getCase(schedule.caseId)?.pickupAddress || "",
+          purpose: String(form.get("purposeReturn")) || "回程接送",
+          specialRequirements: schedule.specialRequirements,
+          status: "active",
+          stopReason: "",
+          dateOverrides: [],
+        };
+        await apiAction("create_schedule", {
+          schedule: nextScheduleReturn,
+          serviceDate: state.serviceDate,
+        });
+      }
+
       editingScheduleId = "";
       scheduleFormOpen = false;
       selectedScheduleId = nextScheduleId;
@@ -1702,6 +1762,29 @@ async function handleScheduleSubmit(event) {
     state.schedules = state.schedules.map((item) => (item.id === editingId ? nextSchedule : item));
   } else {
     state.schedules.push(nextSchedule);
+
+    if (form.get("hasReturnTrip")) {
+      const nextScheduleReturn = {
+        id: uid("sch"),
+        caseId: schedule.caseId,
+        driverId: String(form.get("driverIdReturn")) || schedule.driverId,
+        scheduleType: schedule.scheduleType,
+        serviceDate: schedule.serviceDate,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
+        daysOfWeek: schedule.daysOfWeek,
+        scheduledPickup: String(form.get("scheduledPickupReturn")) || "16:00",
+        scheduledDropoff: String(form.get("scheduledDropoffReturn")) || "16:30",
+        pickupAddress: schedule.destinationAddress || getCase(schedule.caseId)?.destinationAddress || "",
+        destinationAddress: schedule.pickupAddress || getCase(schedule.caseId)?.pickupAddress || "",
+        purpose: String(form.get("purposeReturn")) || "回程接送",
+        specialRequirements: schedule.specialRequirements,
+        status: "active",
+        stopReason: "",
+        dateOverrides: [],
+      };
+      state.schedules.push(nextScheduleReturn);
+    }
   }
   editingScheduleId = "";
   scheduleFormOpen = false;
@@ -1800,7 +1883,7 @@ async function handleScheduleAction(event) {
     selectedScheduleId = card.dataset.scheduleId === selectedScheduleId ? "" : card.dataset.scheduleId;
     editingScheduleId = "";
     scheduleFormOpen = false;
-    scheduleOverrideOpen = Boolean(selectedScheduleId);
+    scheduleOverrideOpen = false;
     refreshSchedulesView();
     return;
   }
@@ -2431,7 +2514,7 @@ function renderRideRow(trip) {
           <span class="route-dot-icon">●</span>
           <div class="route-details">
             <span class="route-label">上車：</span>
-            <span class="route-address">${escapeHTML(person?.pickupAddress ?? "")}</span>
+            <span class="route-address">${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}</span>
           </div>
         </div>
         <div class="route-item dropoff">
@@ -2485,8 +2568,9 @@ function googleMapsRouteUrl(trip) {
     params.set("origin", `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`);
   }
 
-  if (person?.pickupAddress) {
-    params.set("waypoints", person.pickupAddress);
+  const pickup = trip.pickupAddress || person?.pickupAddress || "";
+  if (pickup) {
+    params.set("waypoints", pickup);
   }
 
   params.set("destination", trip.destinationAddress || person?.destinationAddress || person?.pickupAddress || "");
@@ -2520,10 +2604,23 @@ function renderCases(host = document.getElementById("appView")) {
   document.getElementById("caseList").innerHTML = state.cases.map(renderCaseCard).join("");
 
   const driverSelect = document.getElementById("caseDriverSelect");
-  driverSelect.innerHTML = state.drivers
+  const driverSelectReturn = document.getElementById("caseDriverSelectReturn");
+  const driverOpts = state.drivers
     .filter((driver) => driver.active)
     .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.vehicleNo)}</option>`)
     .join("");
+  if (driverSelect) driverSelect.innerHTML = driverOpts;
+  if (driverSelectReturn) driverSelectReturn.innerHTML = driverOpts;
+
+  const createReturnTripCheckbox = document.getElementById("createReturnTripCheckbox");
+  if (createReturnTripCheckbox) {
+    createReturnTripCheckbox.addEventListener("change", (e) => {
+      const returnFields = document.getElementById("caseReturnFields");
+      if (returnFields) {
+        returnFields.style.display = e.target.checked ? "grid" : "none";
+      }
+    });
+  }
 
   const siteSelect = document.getElementById("communitySiteSelect");
   siteSelect.innerHTML = [
@@ -2559,7 +2656,25 @@ function renderCases(host = document.getElementById("appView")) {
       document.getElementById("caseCancelBtn").click();
     });
   }
-  if (editingCaseId) fillCaseForm(editingCaseId);
+  if (editingCaseId) {
+    fillCaseForm(editingCaseId);
+  } else {
+    const form = document.getElementById("caseForm");
+    if (form) {
+      form.reset();
+      form.elements.id.value = "";
+      form.elements.createTrip.checked = true;
+      form.elements.createTrip.disabled = false;
+      if (form.elements.createReturnTrip) {
+        form.elements.createReturnTrip.checked = false;
+        form.elements.createReturnTrip.disabled = false;
+      }
+      const returnFields = document.getElementById("caseReturnFields");
+      if (returnFields) returnFields.style.display = "none";
+      document.getElementById("caseFormMode").textContent = "新增個案";
+      document.getElementById("caseSubmitBtn").textContent = "＋ 新增個案";
+    }
+  }
   renderFlash();
 }
 
@@ -2696,6 +2811,12 @@ function fillCaseForm(caseId) {
   form.elements.note.value = person.note || "";
   form.elements.createTrip.checked = false;
   form.elements.createTrip.disabled = true;
+  if (form.elements.createReturnTrip) {
+    form.elements.createReturnTrip.checked = false;
+    form.elements.createReturnTrip.disabled = true;
+  }
+  const returnFields = document.getElementById("caseReturnFields");
+  if (returnFields) returnFields.style.display = "none";
   document.getElementById("caseFormMode").textContent = "編輯個案";
   document.getElementById("caseSubmitBtn").textContent = "💾 儲存個案";
 }
@@ -2770,6 +2891,15 @@ async function handleCaseSubmit(event) {
               destinationAddress: String(form.get("tripDestination")).trim() || String(form.get("destinationAddress")).trim(),
             }
           : null,
+        tripReturn: form.get("createReturnTrip")
+          ? {
+              driverId: String(form.get("driverIdReturn")),
+              scheduledPickup: String(form.get("scheduledPickupReturn")),
+              scheduledDropoff: String(form.get("scheduledDropoffReturn")),
+              pickupAddress: String(form.get("tripDestination")).trim() || String(form.get("destinationAddress")).trim(),
+              destinationAddress: String(form.get("pickupAddress")).trim(),
+            }
+          : null,
       });
       const savedCase = findSavedCase(newCase, editingId);
       editingCaseId = "";
@@ -2809,6 +2939,7 @@ async function handleCaseSubmit(event) {
       driverId: String(form.get("driverId")),
       scheduledPickup: String(form.get("scheduledPickup")),
       scheduledDropoff: String(form.get("scheduledDropoff")),
+      pickupAddress: newCase.pickupAddress,
       destinationAddress: String(form.get("tripDestination")).trim() || newCase.destinationAddress,
       pickupTime: "",
       pickupAt: "",
@@ -2817,6 +2948,27 @@ async function handleCaseSubmit(event) {
       dropoffAt: "",
       dropoffLocation: null,
       purpose: "日照接送",
+      status: "scheduled",
+    });
+  }
+
+  if (form.get("createReturnTrip")) {
+    state.trips.push({
+      id: uid("trip"),
+      serviceDate: state.serviceDate,
+      caseId: newCase.id,
+      driverId: String(form.get("driverIdReturn")),
+      scheduledPickup: String(form.get("scheduledPickupReturn")),
+      scheduledDropoff: String(form.get("scheduledDropoffReturn")),
+      pickupAddress: String(form.get("tripDestination")).trim() || newCase.destinationAddress,
+      destinationAddress: newCase.pickupAddress,
+      pickupTime: "",
+      pickupAt: "",
+      pickupLocation: null,
+      dropoffTime: "",
+      dropoffAt: "",
+      dropoffLocation: null,
+      purpose: "回程接送",
       status: "scheduled",
     });
   }
@@ -3063,7 +3215,7 @@ function renderDriverManageCard(driver) {
       <div>
         <strong>${escapeHTML(driver.name)}</strong>
         <p class="subtext">車號 ${escapeHTML(driver.vehicleNo)}</p>
-        <p class="subtext">${escapeHTML(driver.phone || "未填電話")}</p>
+        <p class="subtext">電話：${driver.phone ? renderPhoneLink(driver.phone) : "未填電話"}</p>
         <span class="status-pill ${activeClass}">${activeText}</span>
       </div>
       <div>
@@ -3404,11 +3556,11 @@ function renderDriverTask(trip) {
         <div class="address-grid">
           <div class="address-box">
             <span>上車地址</span>
-            ${escapeHTML(person?.pickupAddress ?? "")}
+            ${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}
           </div>
           <div class="address-box">
             <span>目的地</span>
-            ${escapeHTML(person?.destinationAddress ?? "")}
+            ${escapeHTML(trip.destinationAddress || person?.destinationAddress || "")}
           </div>
         </div>
         <p class="subtext">${escapeHTML(person?.mobility ?? "")} · ${escapeHTML(person?.note ?? "")}</p>
