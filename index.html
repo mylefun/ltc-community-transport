@@ -89,9 +89,10 @@
                 <div class="notification-dropdown-body" id="notificationList"></div>
               </div>
             </div>
-            <span class="live-chip">
+            <span class="live-chip" title="本機示範資料" id="liveChipContainer">
               <span class="dot local"></span>
-              <span id="topbarConnection">本機示範資料</span>
+              <span class="material-symbols-outlined connection-icon" style="font-size: 18px; margin-left: 2px;">cloud_queue</span>
+              <span id="topbarConnection" class="connection-text">本機示範資料</span>
             </span>
             <button class="nav-item topbar-nav-btn" data-view="settings" aria-label="設定" title="設定" type="button">
               <span class="material-symbols-outlined" aria-hidden="true">settings</span>
@@ -99,9 +100,8 @@
             <button class="nav-item topbar-nav-btn" data-view="releases" aria-label="版本更新紀錄" title="版本更新紀錄" type="button">
               <span class="material-symbols-outlined" aria-hidden="true">new_releases</span>
             </button>
-             <button class="topbar-logout" id="coordinatorLogoutBtn" type="button">
+             <button class="topbar-logout" id="coordinatorLogoutBtn" type="button" title="登出" aria-label="登出">
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
-              登出
             </button>
           </div>
         </header>
@@ -731,6 +731,22 @@
         </section>
       </div>
     </template>
+
+    <!-- Trip Detail Modal -->
+    <section class="modal-overlay" id="tripDetailPanel" hidden>
+      <div class="modal-card" style="max-width: 540px;">
+        <div class="modal-header">
+          <h3>
+            <span class="section-icon material-symbols-outlined" aria-hidden="true">assignment_turned_in</span>
+            <span>接送班次詳細資訊</span>
+          </h3>
+          <button type="button" class="modal-close-btn material-symbols-outlined" id="tripDetailCloseBtn" aria-label="關閉視窗">close</button>
+        </div>
+        <div class="modal-body" id="tripDetailBody">
+          <!-- Dynamically filled by app.js -->
+        </div>
+      </div>
+    </section>
 
     <script src="./app.js" defer></script>
   </body>

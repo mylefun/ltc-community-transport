@@ -512,16 +512,34 @@ body[data-view="home"] .view-host {
 }
 
 .live-chip {
-  gap: 8px;
-  min-height: 38px;
-  padding: 8px 12px;
-  color: var(--ink);
-  background: var(--surface);
-  border-radius: 999px;
-  box-shadow: var(--shadow-soft);
-  font-family: "Hanken Grotesk", "Noto Sans TC", sans-serif;
-  font-size: 13px;
-  font-weight: 800;
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  color: var(--brand-dark) !important;
+  background: var(--surface) !important;
+  border: 1px solid rgba(189, 201, 200, 0.72) !important;
+  border-radius: 50% !important;
+  box-shadow: var(--shadow-soft) !important;
+  cursor: help !important;
+}
+
+.live-chip .dot {
+  position: absolute !important;
+  top: 3px !important;
+  right: 3px !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  border: 1.5px solid var(--surface) !important;
+}
+
+.connection-text {
+  display: none !important;
 }
 
 .topbar-clock {
@@ -550,16 +568,30 @@ body[data-view="home"] .view-host {
 }
 
 .topbar-logout {
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 38px;
-  padding: 8px 12px;
-  color: var(--red);
-  background: #ffdad6;
-  border: 1px solid rgba(186, 26, 26, 0.18);
-  border-radius: 999px;
-  font-weight: 900;
+  display: none !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  color: var(--red) !important;
+  background: #ffdad6 !important;
+  border: 1px solid rgba(186, 26, 26, 0.18) !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+body.coordinator-unlocked .topbar-logout {
+  display: inline-flex !important;
+}
+
+.topbar-logout:hover {
+  background: var(--red) !important;
+  color: white !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 14px rgba(186, 26, 26, 0.15) !important;
 }
 
 .topbar-logout .material-symbols-outlined {
@@ -1346,15 +1378,23 @@ textarea {
 
 .ride-row {
   display: grid;
-  grid-template-columns: 110px 1.2fr 1.6fr 1.4fr;
+  grid-template-columns: 100px 1.1fr 1.1fr 1.8fr;
   gap: 20px;
-  align-items: start;
-  padding: 20px;
+  align-items: center;
+  padding: 16px 20px;
   background: var(--surface);
   border: 1px solid rgba(189, 201, 200, 0.58);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(18, 34, 45, 0.04);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ride-row:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0, 90, 90, 0.1);
+  border-color: var(--brand);
 }
 
 .ride-row > * {
@@ -1444,6 +1484,23 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.ride-route.simplified {
+  gap: 6px;
+}
+
+.ride-route.simplified .route-item {
+  align-items: center;
+}
+
+.ride-route.simplified .route-address {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .route-item {

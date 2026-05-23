@@ -698,6 +698,15 @@ function updateConnectionState() {
   const topDot = document.querySelector(".live-chip .dot");
   if (target) target.textContent = dataMessage;
   if (topTarget) topTarget.textContent = dataMessage;
+
+  const chipContainer = document.getElementById("liveChipContainer");
+  if (chipContainer) chipContainer.setAttribute("title", dataMessage);
+
+  const topIcon = document.querySelector(".live-chip .connection-icon");
+  if (topIcon) {
+    topIcon.textContent = dataMode === "supabase" ? "cloud_done" : "cloud_queue";
+  }
+
   [dot, topDot].filter(Boolean).forEach((item) => {
     item.classList.toggle("online", dataMode === "supabase");
     item.classList.toggle("local", dataMode !== "supabase");
@@ -1452,32 +1461,46 @@ function renderDashboard() {
   });
 
   board.addEventListener("click", (event) => {
-    const btn = event.target.closest(".delete-trip-btn");
-    if (!btn) return;
-    const tripId = btn.dataset.tripId;
-    const trip = state.trips.find((item) => item.id === tripId);
-    if (!trip) return;
-    const person = getCase(trip.caseId);
-    const caseName = person ? person.name : "此接送";
-    if (!window.confirm(`確定刪除個案「${caseName}」今日的這筆接送班次？`)) return;
+    const deleteBtn = event.target.closest(".delete-trip-btn");
+    if (deleteBtn) {
+      const tripId = deleteBtn.dataset.tripId;
+      const trip = state.trips.find((item) => item.id === tripId);
+      if (!trip) return;
+      const person = getCase(trip.caseId);
+      const caseName = person ? person.name : "此接送";
+      if (!window.confirm(`確定刪除個案「${caseName}」今日的這筆接送班次？`)) return;
 
-    if (dataMode === "supabase") {
-      apiAction("delete_trip", { tripId })
-        .then(() => {
-          addNotification(`已刪除「${caseName}」今日的接送班次`, true);
-          renderDashboard();
-        })
-        .catch((error) => {
-          dataMessage = `刪除失敗：${error.message}`;
-          addNotification(`刪除失敗：${error.message}`, false);
-          renderDashboard();
-        });
+      if (dataMode === "supabase") {
+        apiAction("delete_trip", { tripId })
+          .then(() => {
+            addNotification(`已刪除「${caseName}」今日的接送班次`, true);
+            renderDashboard();
+          })
+          .catch((error) => {
+            dataMessage = `刪除失敗：${error.message}`;
+            addNotification(`刪除失敗：${error.message}`, false);
+            renderDashboard();
+          });
+        return;
+      }
+      state.trips = state.trips.filter((item) => item.id !== tripId);
+      saveState();
+      addNotification(`已刪除「${caseName}」今日的接送班次`, true);
+      renderDashboard();
       return;
     }
-    state.trips = state.trips.filter((item) => item.id !== tripId);
-    saveState();
-    addNotification(`已刪除「${caseName}」今日的接送班次`, true);
-    renderDashboard();
+
+    if (event.target.closest(".driver-select") || event.target.closest(".google-maps-link")) {
+      return;
+    }
+
+    const row = event.target.closest(".ride-row");
+    if (row) {
+      const tripId = row.dataset.tripId;
+      if (tripId) {
+        showTripDetails(tripId);
+      }
+    }
   });
 }
 
@@ -2659,17 +2682,15 @@ function renderRideRow(trip) {
     .join("");
 
   return `
-    <article class="ride-row ${escapeHTML(status)}">
+    <article class="ride-row ${escapeHTML(status)}" data-trip-id="${escapeHTML(trip.id)}">
       <!-- Column 1: Time & Status -->
       <div class="ride-time-status">
         <div class="time-block">
           <div class="time-item">
-            <span class="time-label">上車</span>
             <strong class="time-val">${escapeHTML(trip.scheduledPickup)}</strong>
           </div>
-          <div class="time-divider">↓</div>
+          <div class="time-divider">-</div>
           <div class="time-item">
-            <span class="time-label">送達</span>
             <strong class="time-val">${escapeHTML(trip.scheduledDropoff)}</strong>
           </div>
         </div>
@@ -2683,24 +2704,21 @@ function renderRideRow(trip) {
           <span class="purpose-badge">${escapeHTML(trip.purpose)}</span>
         </div>
         <p class="person-meta">${escapeHTML(person?.caseNo ?? "")} · ${escapeHTML(person?.careLevel ?? "")}</p>
-        <p class="person-mobility">${escapeHTML(person?.mobility ?? "")}</p>
       </div>
 
       <!-- Column 3: Route -->
-      <div class="ride-route">
-        <div class="route-item pickup">
-          <span class="route-dot-icon">●</span>
-          <div class="route-details">
-            <span class="route-label">上車：</span>
-            <span class="route-address">${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}</span>
-          </div>
+      <div class="ride-route simplified">
+        <div class="route-item">
+          <span class="route-dot-icon" style="color: var(--brand);">●</span>
+          <span class="route-address" title="${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}">
+            ${escapeHTML(simplifyAddress(trip.pickupAddress || person?.pickupAddress || ""))}
+          </span>
         </div>
-        <div class="route-item dropoff">
-          <span class="route-dot-icon">▼</span>
-          <div class="route-details">
-            <span class="route-label">目的：</span>
-            <span class="route-address">${escapeHTML(destination)}</span>
-          </div>
+        <div class="route-item">
+          <span class="route-dot-icon" style="color: var(--amber);">▼</span>
+          <span class="route-address" title="${escapeHTML(destination)}">
+            ${escapeHTML(simplifyAddress(destination))}
+          </span>
         </div>
       </div>
 
@@ -2711,23 +2729,15 @@ function renderRideRow(trip) {
             <span>指派司機</span>
             <select class="driver-select" data-trip-id="${escapeHTML(trip.id)}">${options}</select>
           </label>
-          <a class="route-icon-btn" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(driver?.name ?? "司機")} 的 Google 地圖路徑" title="開啟 Google 地圖路徑">
+          <a class="route-icon-btn google-maps-link" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 Google 地圖路徑" title="開啟 Google 地圖路徑">
             <span class="material-symbols-outlined" aria-hidden="true">map</span>
           </a>
+          <button class="route-icon-btn show-trip-detail-btn" type="button" data-trip-id="${escapeHTML(trip.id)}" aria-label="詳細資訊" title="詳細資訊">
+            <span class="material-symbols-outlined" aria-hidden="true">info</span>
+          </button>
           <button class="route-icon-btn delete-trip-btn" type="button" data-trip-id="${escapeHTML(trip.id)}" aria-label="刪除此班次" title="刪除此班次">
             <span class="material-symbols-outlined" aria-hidden="true">delete</span>
           </button>
-        </div>
-        <div class="dispatch-meta">
-          <div class="dispatch-time">
-            <span>接到 ${escapeHTML(trip.pickupTime || "--:--")}</span>
-            <span class="dot-sep">·</span>
-            <span>送達 ${escapeHTML(trip.dropoffTime || "--:--")}</span>
-          </div>
-          <div class="dispatch-loc">
-            <span class="material-symbols-outlined loc-icon" aria-hidden="true">my_location</span>
-            <span>定位 ${escapeHTML(formatEventTime(state.driverLocations[trip.driverId]?.updatedAt))}</span>
-          </div>
         </div>
       </div>
     </article>
@@ -4013,6 +4023,114 @@ function setupPullToRefresh() {
   });
 }
 
+function simplifyAddress(addr) {
+  if (!addr) return "";
+  let clean = addr.replace(/^(台灣|台灣省|台灣省宜蘭縣|宜蘭縣|宜蘭市|台北市|新北市|萬華區|中正區)/g, "");
+  const match = clean.match(/^[^路街段巷村]+[路街段巷村]/);
+  if (match) return match[0];
+  return clean.substring(0, 8) + (clean.length > 8 ? "..." : "");
+}
+
+function showTripDetails(tripId) {
+  const trip = state.trips.find((item) => item.id === tripId);
+  if (!trip) return;
+
+  const person = getCase(trip.caseId);
+  const driver = getDriver(trip.driverId);
+  const status = getTripStatus(trip);
+
+  const panel = document.getElementById("tripDetailPanel");
+  const body = document.getElementById("tripDetailBody");
+  if (!panel || !body) return;
+
+  const destination = trip.destinationAddress || person?.destinationAddress || "";
+  const pickup = trip.pickupAddress || person?.pickupAddress || "";
+
+  body.innerHTML = `
+    <div class="trip-detail-content" style="display: flex; flex-direction: column; gap: 16px;">
+      <!-- Time & Status Card -->
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px; background: var(--brand-soft); border-radius: 14px; border: 1px solid rgba(0, 90, 90, 0.1);">
+        <div>
+          <span style="font-size: 12px; color: var(--muted); display: block;">預定接送時間</span>
+          <strong style="font-size: 20px; color: var(--brand-dark); font-family: monospace;">${escapeHTML(trip.scheduledPickup)} - ${escapeHTML(trip.scheduledDropoff)}</strong>
+        </div>
+        <span class="status-pill ${escapeHTML(status)}" style="font-size: 14px; padding: 6px 12px;">${escapeHTML(statusLabels[status])}</span>
+      </div>
+
+      <!-- Case Info section -->
+      <div style="padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+        <h4 style="margin: 0 0 6px; font-size: 16px; color: var(--ink); display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-outlined" style="font-size: 18px; color: var(--brand);">accessible_forward</span>
+          個案基本資料
+        </h4>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+          <div><strong style="color: var(--muted);">個案姓名：</strong>${escapeHTML(person?.name ?? "未知個案")}</div>
+          <div><strong style="color: var(--muted);">福利身分：</strong>${escapeHTML(person?.welfareStatus ?? "一般戶")}</div>
+          <div><strong style="color: var(--muted);">個案編號：</strong>${escapeHTML(person?.caseNo ?? "無")}</div>
+          <div><strong style="color: var(--muted);">照顧等級：</strong>${escapeHTML(person?.careLevel ?? "無")}</div>
+          <div style="grid-column: span 2;"><strong style="color: var(--muted);">行動狀態：</strong>${escapeHTML(person?.mobility ?? "無")}</div>
+          <div style="grid-column: span 2;"><strong style="color: var(--muted);">輔具/需求：</strong>${escapeHTML(person?.assistiveDevice ?? "無")}</div>
+          <div style="grid-column: span 2;"><strong style="color: var(--muted);">聯絡電話：</strong><a href="tel:${escapeHTML(person?.phone ?? "")}" style="color: var(--brand); font-weight: 700;">${escapeHTML(person?.phone ?? "無")}</a></div>
+        </div>
+      </div>
+
+      <!-- Route info -->
+      <div style="padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <h4 style="margin: 0; font-size: 16px; color: var(--ink); display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-outlined" style="font-size: 18px; color: var(--brand);">map</span>
+          接送路線規劃
+        </h4>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 14px;">
+          <div style="display: flex; gap: 8px; align-items: flex-start;">
+            <span style="color: var(--brand); font-size: 16px; margin-top: 2px;">●</span>
+            <div>
+              <strong style="color: var(--muted); font-size: 12px; display: block;">起點上車地址</strong>
+              <span>${escapeHTML(pickup)}</span>
+              <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pickup)}" target="_blank" style="margin-left: 8px; color: var(--brand); font-size: 12px; text-decoration: underline;">地圖檢視</a>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: flex-start;">
+            <span style="color: var(--amber); font-size: 16px; margin-top: 2px;">▼</span>
+            <div>
+              <strong style="color: var(--muted); font-size: 12px; display: block;">終點送達目的地</strong>
+              <span>${escapeHTML(destination)}</span>
+              <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}" target="_blank" style="margin-left: 8px; color: var(--brand); font-size: 12px; text-decoration: underline;">地圖檢視</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Driver assignment & tracking -->
+      <div style="padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+        <h4 style="margin: 0 0 6px; font-size: 16px; color: var(--ink); display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-outlined" style="font-size: 18px; color: var(--brand);">airport_shuttle</span>
+          指派司機與派遣日誌
+        </h4>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px;">
+          <div><strong style="color: var(--muted);">司機姓名：</strong>${escapeHTML(driver?.name ?? "未指派")}</div>
+          <div><strong style="color: var(--muted);">指派車號：</strong>${escapeHTML(driver?.vehicleNo ?? "無")}</div>
+          <div><strong style="color: var(--muted);">實際接到：</strong>${escapeHTML(trip.pickupTime || "--:--")}</div>
+          <div><strong style="color: var(--muted);">實際送達：</strong>${escapeHTML(trip.dropoffTime || "--:--")}</div>
+          <div style="grid-column: span 2; display: flex; align-items: center; gap: 4px;">
+            <strong style="color: var(--muted);">最新 GPS 定位時間：</strong>
+            <span>${escapeHTML(formatEventTime(state.driverLocations[trip.driverId]?.updatedAt) || "無")}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ride Note -->
+      ${trip.purpose || person?.rideNote ? `
+        <div style="padding: 12px; background: #fffde7; border: 1px solid #fff59d; border-radius: 12px; font-size: 13px; color: #5d4037; line-height: 1.5;">
+          ${trip.purpose ? `<strong>接送備註：</strong>${escapeHTML(trip.purpose)}` : ""}
+          ${person?.rideNote ? `<br><strong>注意事項：</strong>${escapeHTML(person.rideNote)}` : ""}
+        </div>
+      ` : ""}
+    </div>
+  `;
+
+  panel.hidden = false;
+}
+
 async function init() {
   document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("zh-TW", {
     year: "numeric",
@@ -4040,6 +4158,20 @@ async function init() {
   });
 
   document.getElementById("coordinatorLogoutBtn").addEventListener("click", logoutCoordinator);
+
+  // Trip detail modal close binding
+  const detailPanel = document.getElementById("tripDetailPanel");
+  const detailCloseBtn = document.getElementById("tripDetailCloseBtn");
+  if (detailCloseBtn && detailPanel) {
+    detailCloseBtn.addEventListener("click", () => {
+      detailPanel.hidden = true;
+    });
+    detailPanel.addEventListener("click", (e) => {
+      if (e.target === detailPanel) {
+        detailPanel.hidden = true;
+      }
+    });
+  }
 
   initNotificationCenter();
   setupPullToRefresh();
