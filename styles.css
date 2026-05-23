@@ -763,12 +763,18 @@ body[data-view="home"] .view-host {
   min-width: 0;
   padding: 6px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: rgba(255, 255, 255, 0.66);
   border: 1px solid rgba(189, 201, 200, 0.46);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
-  scrollbar-width: thin;
+  scrollbar-width: none; /* Hide for Firefox */
 }
+
+.summary-grid::-webkit-scrollbar {
+  display: none; /* Hide for Chrome, Safari, Opera */
+}
+
 
 .summary-card {
   display: flex;
@@ -2594,10 +2600,20 @@ body[data-view="driver"] .task-actions button {
     order: 2;
     width: 100%;
     margin-left: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .topbar-management::-webkit-scrollbar {
+    display: none;
   }
 
   .topbar-management-btn {
-    flex: 1;
+    flex: 0 0 auto;
+    padding: 8px 16px;
   }
 
   .topbar-actions {
@@ -2610,6 +2626,14 @@ body[data-view="driver"] .task-actions button {
 
   .view-host {
     padding: 16px 16px 104px;
+  }
+
+  .app-toast {
+    bottom: 96px;
+    left: 20px;
+    right: 20px;
+    max-width: calc(100vw - 40px);
+    text-align: center;
   }
 
 }
@@ -3003,6 +3027,15 @@ body[data-view="home"] .notification-container {
 }
 
 @media (max-width: 480px) {
+  .modal-overlay {
+    padding: 10px;
+  }
+  .modal-header {
+    padding: 16px 20px;
+  }
+  .modal-body {
+    padding: 16px;
+  }
   .modal-body .case-form {
     grid-template-columns: 1fr;
   }
