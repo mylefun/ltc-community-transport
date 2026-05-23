@@ -2685,15 +2685,7 @@ function renderRideRow(trip) {
     <article class="ride-row ${escapeHTML(status)}" data-trip-id="${escapeHTML(trip.id)}">
       <!-- Column 1: Time & Status -->
       <div class="ride-time-status">
-        <div class="time-block">
-          <div class="time-item">
-            <strong class="time-val">${escapeHTML(trip.scheduledPickup)}</strong>
-          </div>
-          <div class="time-divider">-</div>
-          <div class="time-item">
-            <strong class="time-val">${escapeHTML(trip.scheduledDropoff)}</strong>
-          </div>
-        </div>
+        <strong class="time-val" style="font-family: monospace;">${escapeHTML(trip.scheduledPickup)} ~ ${escapeHTML(trip.scheduledDropoff)}</strong>
         <span class="status-pill ${escapeHTML(status)}">${escapeHTML(statusLabels[status])}</span>
       </div>
 
@@ -2732,9 +2724,6 @@ function renderRideRow(trip) {
           <a class="route-icon-btn google-maps-link" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 Google 地圖路徑" title="開啟 Google 地圖路徑">
             <span class="material-symbols-outlined" aria-hidden="true">map</span>
           </a>
-          <button class="route-icon-btn show-trip-detail-btn" type="button" data-trip-id="${escapeHTML(trip.id)}" aria-label="詳細資訊" title="詳細資訊">
-            <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          </button>
           <button class="route-icon-btn delete-trip-btn" type="button" data-trip-id="${escapeHTML(trip.id)}" aria-label="刪除此班次" title="刪除此班次">
             <span class="material-symbols-outlined" aria-hidden="true">delete</span>
           </button>
@@ -3944,9 +3933,18 @@ function renderReleases() {
 }
 
 function updateClock() {
-  const target = document.getElementById("clock");
   const time = localTime();
-  if (target) target.textContent = time;
+  const dateStr = new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "long",
+  }).format(new Date());
+  
+  const target = document.getElementById("todayLabel");
+  if (target) {
+    target.textContent = `${dateStr} ${time}`;
+  }
 }
 
 async function refreshCurrentData() {
