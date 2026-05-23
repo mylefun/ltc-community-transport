@@ -1225,7 +1225,7 @@ function updateNotificationCenter() {
 
   list.innerHTML = notifications
     .map((n) => {
-      const timeStr = new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const timeStr = new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
       const statusIcon = n.success ? "check_circle" : "cancel";
       const itemClass = n.success ? "success" : "failure";
       return `
@@ -1373,7 +1373,6 @@ function renderCoordinatorGate() {
     sessionStorage.setItem(COORDINATOR_SESSION_KEY, "true");
     sessionStorage.setItem(COORDINATOR_PASSCODE_KEY, passcode);
     activeView = pendingProtectedView || "dashboard";
-    addNotification("承辦人登入成功", true);
     render();
   });
 
@@ -2695,23 +2694,22 @@ function renderRideRow(trip) {
           <strong class="person-name">${escapeHTML(person?.name ?? "未知個案")}</strong>
           <span class="purpose-badge">${escapeHTML(trip.purpose)}</span>
         </div>
-        <p class="person-meta">${escapeHTML(person?.caseNo ?? "")} · ${escapeHTML(person?.careLevel ?? "")}</p>
       </div>
 
       <!-- Column 3: Route -->
       <div class="ride-route simplified">
-        <div class="route-item">
-          <span class="route-dot-icon" style="color: var(--brand);">●</span>
-          <span class="route-address" title="${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}">
-            ${escapeHTML(simplifyAddress(trip.pickupAddress || person?.pickupAddress || ""))}
-          </span>
-        </div>
-        <div class="route-item">
-          <span class="route-dot-icon" style="color: var(--amber);">▼</span>
-          <span class="route-address" title="${escapeHTML(destination)}">
-            ${escapeHTML(simplifyAddress(destination))}
-          </span>
-        </div>
+        <span class="route-dot-icon" style="color: var(--brand);">●</span>
+        <span class="route-address" title="${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}">
+          ${escapeHTML(simplifyAddress(trip.pickupAddress || person?.pickupAddress || ""))}
+        </span>
+        <span style="color: var(--muted); margin: 0 4px; font-weight: bold; flex-shrink: 0;">➔</span>
+        <span class="route-dot-icon" style="color: var(--amber);">▼</span>
+        <span class="route-address" title="${escapeHTML(destination)}">
+          ${escapeHTML(simplifyAddress(destination))}
+        </span>
+        <a class="route-icon-btn google-maps-link" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 Google 地圖路徑" title="開啟 Google 地圖路徑" style="margin-left: auto; flex-shrink: 0;">
+          <span class="material-symbols-outlined" style="font-size: 20px;" aria-hidden="true">map</span>
+        </a>
       </div>
 
       <!-- Column 4: Driver & Tracking -->
@@ -2721,12 +2719,6 @@ function renderRideRow(trip) {
             <span>指派司機</span>
             <select class="driver-select" data-trip-id="${escapeHTML(trip.id)}">${options}</select>
           </label>
-          <a class="route-icon-btn google-maps-link" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 Google 地圖路徑" title="開啟 Google 地圖路徑">
-            <span class="material-symbols-outlined" aria-hidden="true">map</span>
-          </a>
-          <button class="route-icon-btn delete-trip-btn" type="button" data-trip-id="${escapeHTML(trip.id)}" aria-label="刪除此班次" title="刪除此班次">
-            <span class="material-symbols-outlined" aria-hidden="true">delete</span>
-          </button>
         </div>
       </div>
     </article>

@@ -1341,6 +1341,7 @@ label {
 input,
 select,
 textarea {
+  font-size: 16px;
   width: 100%;
   min-height: 44px;
   padding: 10px 14px;
@@ -1374,7 +1375,7 @@ textarea {
 
 .ride-row {
   display: grid;
-  grid-template-columns: 240px 1.1fr 1.1fr 1.6fr;
+  grid-template-columns: 240px 1fr 1.4fr 1.2fr;
   gap: 20px;
   align-items: center;
   padding: 16px 20px;
@@ -1483,11 +1484,11 @@ textarea {
 }
 
 .ride-route.simplified {
-  gap: 6px;
-}
-
-.ride-route.simplified .route-item {
+  display: flex;
+  flex-direction: row;
   align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .ride-route.simplified .route-address {
@@ -1497,6 +1498,7 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .route-item {
