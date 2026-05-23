@@ -93,13 +93,11 @@
               <span class="dot local"></span>
               <span id="topbarConnection">本機示範資料</span>
             </span>
-            <button class="nav-item topbar-nav-btn" data-view="settings" aria-label="設定" type="button">
-              <span class="material-symbols-outlined" aria-hidden="true">tune</span>
-              <b>設定</b>
+            <button class="nav-item topbar-nav-btn" data-view="settings" aria-label="設定" title="設定" type="button">
+              <span class="material-symbols-outlined" aria-hidden="true">settings</span>
             </button>
-            <button class="nav-item topbar-nav-btn" data-view="releases" aria-label="版本更新紀錄" type="button">
+            <button class="nav-item topbar-nav-btn" data-view="releases" aria-label="版本更新紀錄" title="版本更新紀錄" type="button">
               <span class="material-symbols-outlined" aria-hidden="true">new_releases</span>
-              <b>版本更新紀錄</b>
             </button>
              <button class="topbar-logout" id="coordinatorLogoutBtn" type="button">
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
@@ -151,10 +149,9 @@
     </template>
 
     <template id="dashboardTemplate">
+      <div class="summary-grid" id="summaryGrid"></div>
       <section class="dispatch-shell">
         <div class="dispatch-main">
-          <div class="summary-grid" id="summaryGrid"></div>
-
           <section class="work-section schedule-panel">
             <div class="section-heading">
               <div>
