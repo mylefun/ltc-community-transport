@@ -752,6 +752,7 @@ body.coordinator-unlocked .topbar-nav-btn {
   gap: 24px;
   min-width: 0;
   grid-column: 2;
+  grid-row: 1;
 }
 
 .dispatch-side {
@@ -763,6 +764,7 @@ body.coordinator-unlocked .topbar-nav-btn {
   top: 96px;
   height: calc(100vh - 150px);
   grid-column: 1;
+  grid-row: 1;
 }
 
 .schedule-panel {
@@ -2496,6 +2498,7 @@ body[data-view="driver"] .task-actions button {
   .dispatch-main,
   .dispatch-side {
     grid-column: auto;
+    grid-row: auto;
   }
 
   .dispatch-side {
