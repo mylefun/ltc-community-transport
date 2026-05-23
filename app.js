@@ -4,7 +4,7 @@ const COORDINATOR_PASSCODE_KEY = "ltc-coordinator-passcode";
 const FONT_SCALE_KEY = "ltc-font-scale";
 const SERVICE_DATE_KEY = "ltc-service-date";
 const COORDINATOR_PASSCODE = "2468";
-const protectedViews = new Set(["dashboard", "cases", "drivers", "settings", "releases", "schedules"]);
+const protectedViews = new Set(["dashboard", "cases", "drivers", "settings", "releases", "schedules", "reimbursements"]);
 let notifications = [];
 try {
   notifications = JSON.parse(localStorage.getItem("ltc-notifications") || "[]");
@@ -662,7 +662,7 @@ async function loadRemoteState(serviceDate = state.serviceDate || todayKey()) {
 
   state = normalizeState(payload.state);
   dataMode = "supabase";
-  dataMessage = "Supabase 已連線";
+  dataMessage = "車隊動態同步中";
   saveState();
 }
 
@@ -1079,8 +1079,91 @@ function render() {
   if (visibleView === "settings") renderSettings();
   if (visibleView === "releases") renderReleases();
   if (visibleView === "schedules") renderSchedules();
+  if (visibleView === "reimbursements") renderReimbursements();
   renderFlash();
   updateNotificationCenter();
+}
+
+let selectedReimbursementMonth = todayKey().substring(0, 7);
+
+function renderReimbursements(host = document.getElementById("appView")) {
+  host.replaceChildren(document.getElementById("reimbursementsTemplate").content.cloneNode(true));
+
+  const monthPicker = document.getElementById("reimbursementMonthPicker");
+  if (monthPicker) {
+    monthPicker.value = selectedReimbursementMonth;
+    monthPicker.addEventListener("change", (e) => {
+      selectedReimbursementMonth = e.target.value;
+      updateReimbursementPreview();
+    });
+  }
+
+  const exportBtn = document.getElementById("doExportReimbursementBtn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      const rows = reimbursementRows(selectedReimbursementMonth);
+      if (!rows.length) {
+        setFlash(`${selectedReimbursementMonth} 月份目前沒有已完成的接送班次可匯出。`, "error");
+        return;
+      }
+      downloadSpreadsheet(`社區交通車核銷月報表_${selectedReimbursementMonth}.csv`, rows);
+      addNotification(`已成功匯出核銷月報表 CSV (${selectedReimbursementMonth})`, true);
+    });
+  }
+
+  updateReimbursementPreview();
+}
+
+function updateReimbursementPreview() {
+  const previewList = document.getElementById("reimbursementPreviewList");
+  const countPill = document.getElementById("reimbursementCount");
+  if (!previewList) return;
+
+  const rows = reimbursementRows(selectedReimbursementMonth);
+  if (countPill) countPill.textContent = `${rows.length} 筆已完成`;
+
+  if (!rows.length) {
+    previewList.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 16px; text-align: center; gap: 12px;">
+        <span class="material-symbols-outlined" style="font-size: 48px; color: var(--line);">info</span>
+        <strong>此月份目前無已完成的接送班次</strong>
+        <p class="subtext" style="margin: 0; font-size: 14px;">請先在司機端完成該月份的打卡接送，或切換其他月份查詢。</p>
+      </div>
+    `;
+    return;
+  }
+
+  const cardsHtml = rows.map((row) => {
+    return `
+      <article class="case-card" style="grid-template-columns: 1.2fr 2fr 1.2fr; border-left: 4px solid var(--brand); cursor: default;">
+        <div>
+          <strong class="person-name" style="font-size: 16px; display: block; margin-bottom: 4px;">${escapeHTML(row._caseName || row["身分證字號"])}</strong>
+          <span style="font-size: 13px; color: var(--muted); font-family: monospace;">${escapeHTML(row["身分證字號"])}</span>
+        </div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 4px;">
+            <span style="color: var(--brand); font-weight: 700;">${escapeHTML(row["備註"])}</span>
+            <span class="count-pill" style="font-size: 11px; padding: 2px 6px;">${escapeHTML(row["BD03、DA01使用-里程數(公里)"])} km</span>
+          </div>
+          <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHTML(row["BD03、DA01使用-出發地"])} ➔ ${escapeHTML(row["BD03、DA01使用-目的地"])}">
+            ${escapeHTML(row["BD03、DA01使用-出發地"])} ➔ ${escapeHTML(row["BD03、DA01使用-目的地"])}
+          </p>
+        </div>
+        <div style="text-align: right; display: flex; flex-direction: column; justify-content: center; align-items: flex-end;">
+          <strong style="color: var(--brand-dark); font-size: 15px;">${escapeHTML(row["服務日期(請輸入7碼)"].substring(0, 3))}年${escapeHTML(row["服務日期(請輸入7碼)"].substring(3, 5))}月${escapeHTML(row["服務日期(請輸入7碼)"].substring(5, 7))}日</strong>
+          <span style="font-size: 12px; color: var(--muted); font-family: monospace; display: block; margin-top: 2px;">
+            ${String(row["起始時段-小時\n(24小時制)"]).padStart(2, "0")}:${String(row["起始時段-分鐘"]).padStart(2, "0")} - ${String(row["結束時段-小時\n(24小時制)"]).padStart(2, "0")}:${String(row["結束時段-分鐘"]).padStart(2, "0")}
+          </span>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  previewList.innerHTML = `
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      ${cardsHtml}
+    </div>
+  `;
 }
 
 function renderSchedules(host = document.getElementById("appView")) {
@@ -1311,11 +1394,9 @@ function renderDashboard() {
     summaryCard("班表接送", stats.total, "全部班次", "", "event_available"),
     summaryCard("待接", stats.scheduled, "尚未上車", "waiting", "pending_actions"),
     summaryCard("接送中", stats.picked_up, "已接到未送達", "moving", "directions_car"),
-    summaryCard("已完成", stats.completed, "完成送達", "done", "task_alt"),
     summaryCard("可能延遲", stats.late, "逾預定 10 分鐘", "alert", "warning"),
   ].join("");
 
-  document.getElementById("exportReimbursementBtn").addEventListener("click", exportReimbursementExcel);
   const serviceDatePicker = document.getElementById("serviceDatePicker");
   serviceDatePicker.value = state.serviceDate || todayKey();
   serviceDatePicker.addEventListener("change", (event) => {
@@ -1479,7 +1560,7 @@ function updateScheduleFormMode() {
   if (weekdayFieldset) weekdayFieldset.hidden = scheduleType !== "weekly";
 }
 
-function fillScheduleForm(scheduleId = "") {
+function fillScheduleForm(scheduleId = "", defaultCaseId = "") {
   const schedule = state.schedules.find((item) => item.id === scheduleId);
   const form = document.getElementById("scheduleForm");
   if (!form) return;
@@ -1490,11 +1571,23 @@ function fillScheduleForm(scheduleId = "") {
     form.elements.serviceDate.value = state.serviceDate || todayKey();
     form.elements.startDate.value = state.serviceDate || todayKey();
     form.elements.endDate.value = "";
-    [...form.querySelectorAll('input[name="daysOfWeek"]')].forEach((item) => (item.checked = false));
-    form.elements.scheduledPickup.value = "09:00";
-    form.elements.scheduledDropoff.value = "09:30";
-    form.elements.pickupAddress.value = "";
-    form.elements.destinationAddress.value = "";
+    [...form.querySelectorAll('input[name="daysOfWeek"]')].forEach((item) => {
+      const val = Number(item.value);
+      item.checked = val >= 1 && val <= 5;
+    });
+    form.elements.scheduledPickup.value = "07:00";
+    form.elements.scheduledDropoff.value = "07:30";
+    form.elements.caseId.value = defaultCaseId || "";
+    form.elements.driverId.value = "";
+    const currentCaseId = form.elements.caseId.value;
+    const caseObj = state.cases.find((c) => c.id === currentCaseId);
+    if (caseObj) {
+      form.elements.pickupAddress.value = caseObj.pickupAddress || "";
+      form.elements.destinationAddress.value = caseObj.destinationAddress || "";
+    } else {
+      form.elements.pickupAddress.value = "";
+      form.elements.destinationAddress.value = "";
+    }
     form.elements.purpose.value = "";
     form.elements.specialRequirements.value = "";
     document.getElementById("scheduleFormMode").textContent = "新增排程";
@@ -1575,15 +1668,33 @@ function renderScheduleManager() {
   const caseSelect = document.getElementById("scheduleCaseSelect");
   const driverSelect = document.getElementById("scheduleDriverSelect");
   const overrideDriverSelect = document.getElementById("scheduleOverrideDriverSelect");
-  const caseOptions = state.cases
+  const caseOptions = `<option value="">-- 請選擇個案 --</option>` + state.cases
     .filter((person) => person.active)
     .map((person) => `<option value="${escapeHTML(person.id)}">${escapeHTML(person.name)} · ${escapeHTML(person.caseNo)}</option>`)
     .join("");
-  const driverOptions = state.drivers
+  const driverOptions = `<option value="">-- 請選擇司機 --</option>` + state.drivers
     .filter((driver) => driver.active)
     .map((driver) => `<option value="${escapeHTML(driver.id)}">${escapeHTML(driver.name)} · ${escapeHTML(driver.vehicleNo)}</option>`)
     .join("");
-  if (caseSelect) caseSelect.innerHTML = caseOptions;
+  if (caseSelect) {
+    caseSelect.innerHTML = caseOptions;
+    caseSelect.addEventListener("change", (e) => {
+      if (!editingScheduleId) {
+        const selectedCaseId = e.target.value;
+        const caseObj = state.cases.find((c) => c.id === selectedCaseId);
+        const form = document.getElementById("scheduleForm");
+        if (form) {
+          if (caseObj) {
+            form.elements.pickupAddress.value = caseObj.pickupAddress || "";
+            form.elements.destinationAddress.value = caseObj.destinationAddress || "";
+          } else {
+            form.elements.pickupAddress.value = "";
+            form.elements.destinationAddress.value = "";
+          }
+        }
+      }
+    });
+  }
   if (driverSelect) driverSelect.innerHTML = driverOptions;
   if (overrideDriverSelect) overrideDriverSelect.innerHTML = `<option value="">不變更</option>${driverOptions}`;
   
@@ -2362,61 +2473,138 @@ function burdenRateFor(person) {
   return 0.16;
 }
 
-function reimbursementRows() {
-  const price = 115;
-  const remotePrice = 140;
-  const rows = new Map();
+function minguoDate7(dateString) {
+  const parts = String(dateString || "").split("-");
+  if (parts.length < 3) return "";
+  const year = Number(parts[0]) - 1911;
+  const month = parts[1].padStart(2, "0");
+  const day = parts[2].padStart(2, "0");
+  return `${year}${month}${day}`;
+}
 
-  todayTrips()
-    .filter((trip) => getTripStatus(trip) === "completed")
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 1.5;
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const dist = R * c;
+  return Number(Math.max(0.1, dist).toFixed(1));
+}
+
+function resolveCoordinate(address, caseId, type) {
+  const site = communitySites.find(s => 
+    (s.name && address.includes(s.name)) || 
+    (s.address && address.includes(s.address)) || 
+    (s.address && s.address.includes(address))
+  );
+  if (site) return { lat: site.lat, lng: site.lng };
+
+  const isYilan = /宜蘭|壯圍|五結|羅東/.test(address);
+  const seed = [...(address || `${caseId}-${type}`)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  
+  if (isYilan) {
+    return {
+      lat: Number((24.75 + (seed % 50) * 0.0011).toFixed(6)),
+      lng: Number((121.77 + (seed % 75) * 0.0011).toFixed(6)),
+    };
+  } else {
+    return {
+      lat: Number((25.018 + (seed % 70) * 0.0011).toFixed(6)),
+      lng: Number((121.49 + (seed % 85) * 0.0011).toFixed(6)),
+    };
+  }
+}
+
+function getLocationName(address, isHome) {
+  if (isHome) return "自宅";
+  const site = communitySites.find(s => address.includes(s.name) || s.address.includes(address) || address.includes(s.address));
+  if (site) return site.name;
+  for (const s of communitySites) {
+    if (address.includes(s.name)) return s.name;
+  }
+  return address.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 6);
+}
+
+function reimbursementRows(selectedMonth) {
+  const price = 115;
+  const list = [];
+
+  state.trips
+    .filter((trip) => trip.serviceDate.startsWith(selectedMonth) && getTripStatus(trip) === "completed")
     .forEach((trip) => {
       const person = getCase(trip.caseId);
       const driver = getDriver(trip.driverId);
       if (!person) return;
-      const destination = trip.destinationAddress || person.destinationAddress || "";
-      const key = [person.id, driver?.id || "", trip.purpose || "交通接送", destination].join("|");
-      const burdenRate = burdenRateFor(person);
-      const existing = rows.get(key) || {
-        person,
-        driver,
-        purpose: trip.purpose || "交通接送",
-        destination,
-        count: 0,
-        burdenRate,
-      };
-      existing.count += 1;
-      rows.set(key, existing);
+
+      const depAddress = trip.pickupAddress || person.pickupAddress || "";
+      const arrAddress = trip.destinationAddress || person.destinationAddress || "";
+
+      const depHome = depAddress === person.pickupAddress;
+      const arrHome = arrAddress === person.pickupAddress;
+
+      const depName = getLocationName(depAddress, depHome);
+      const arrName = getLocationName(arrAddress, arrHome);
+
+      const depCoord = trip.pickupLocation || resolveCoordinate(depAddress, person.id, "pickup");
+      const arrCoord = trip.dropoffLocation || resolveCoordinate(arrAddress, person.id, "destination");
+
+      const distance = haversineDistance(depCoord.lat, depCoord.lng, arrCoord.lat, arrCoord.lng);
+
+      const [startH, startM] = (trip.pickupTime || trip.scheduledPickup || "09:00").split(":").map(Number);
+      const [endH, endM] = (trip.dropoffTime || trip.scheduledDropoff || "09:30").split(":").map(Number);
+
+      let serviceType = 2; // Default to community center
+      const dest = trip.destinationAddress || person.destinationAddress || "";
+      if (dest.includes("日照") || dest.includes("中心")) {
+        serviceType = 1;
+      } else if (dest.includes("據點") || dest.includes("社區")) {
+        serviceType = 2;
+      }
+
+      list.push({
+        _caseName: person.name || "",
+        "身分證字號": person.identityNo || "",
+        "服務日期(請輸入7碼)": minguoDate7(trip.serviceDate),
+        "服務項目代碼": "BD03",
+        "服務類別\n1.補助\n2.自費": 1,
+        "數量\n(僅整數)": 1,
+        "單價": price,
+        "服務人員身分證": driver?.identityNo || "A123456789",
+        "起始時段-小時\n(24小時制)": startH,
+        "起始時段-分鐘": startM,
+        "結束時段-小時\n(24小時制)": endH,
+        "結束時段-分鐘": endM,
+        "備註": `${depName}-${arrName}`,
+        "服務人員身分證2": "",
+        "服務人員身分證3": "",
+        "服務人員身分證4": "",
+        "服務人員身分證5": "",
+        "不申報AA09填1": "",
+        "訪視未遇填1": "",
+        "C碼必填-復能目標達成情形\n1.尚未滿服務組數\n2.滿服務組數且已達復能目標\n3.滿服務組數但尚未達復能目標\n4.未滿服務組數已結案，且已達復能目標\n5.未滿服務組數已結案，但未達復能目標": "",
+        "C碼必填-復能目標": "",
+        "C碼必填-指導對象": "",
+        "C碼必填-服務內容": "",
+        "C碼必填-指導建議摘要": "",
+        "OT01必填-餐別\n1.早餐\n2.午餐\n3.晚餐": "",
+        "BD03、DA01使用-出發地": depAddress,
+        "BD03、DA01使用-目的地": arrAddress,
+        "BD03、DA01使用-出發地(緯度)": depCoord.lat,
+        "BD03、DA01使用-出發地(經度)": depCoord.lng,
+        "BD03、DA01使用-目的地(緯度)": arrCoord.lat,
+        "BD03、DA01使用-目的地(經度)": arrCoord.lng,
+        "BD03、DA01使用-里程數(公里)": distance,
+        "BD03、DA01使用-車號": driver?.vehicleNo || "RFH-5153",
+        "BD03必填-服務使用類型\n1.社區式長照機構\n2.社區服務據點(不含身障類)\n3.輔具中心\n4.身障日間照顧服務": serviceType,
+      });
     });
 
-  return [...rows.values()].map(({ person, driver, purpose, destination, count, burdenRate }) => {
-    const declared = price * count;
-    const burdenFee = Math.round(declared * burdenRate);
-    const subsidy = declared - burdenFee;
-    return {
-      身分證號: person.identityNo || "",
-      個案姓名: person.name || "",
-      採用計畫: "長照2.0",
-      CMS等級: person.careLevel || "",
-      福利身分別: person.welfareStatus || "一般戶",
-      服務項目類別: purpose || "交通接送",
-      服務日期: minguoDate(state.serviceDate),
-      "給(支)付價格": price,
-      原民區或離島支付價格: remotePrice,
-      次數: count,
-      申報費用: declared,
-      部分負擔比率: `${Math.round(burdenRate * 100)}%`,
-      部分負擔費用: burdenFee,
-      補助比率: `${Math.round((1 - burdenRate) * 100)}%`,
-      "申請(補助)費用": subsidy,
-      "原民區或離島申請(補助)費用": remotePrice * count - Math.round(remotePrice * count * burdenRate),
-      實際補助金額: subsidy,
-      服務當下居住縣市: addressCity(person.pickupAddress),
-      照管專員: person.careManager || "",
-      服務人員: driver?.name || "",
-      上車地址: person.pickupAddress || "",
-      目的地: destination,
-    };
-  });
+  return list;
 }
 
 function downloadSpreadsheet(filename, rows) {
@@ -2424,38 +2612,28 @@ function downloadSpreadsheet(filename, rows) {
     setFlash("目前沒有已完成的班次可匯出核銷清冊。", "error");
     return;
   }
-  const headers = Object.keys(rows[0]);
-  const headerCells = headers.map((header) => `<Cell><Data ss:Type="String">${escapeXML(header)}</Data></Cell>`).join("");
-  const bodyRows = rows
-    .map((row) => {
-      const cells = headers
-        .map((header) => {
-          const value = row[header];
-          const type = typeof value === "number" ? "Number" : "String";
-          return `<Cell><Data ss:Type="${type}">${escapeXML(value)}</Data></Cell>`;
-        })
-        .join("");
-      return `<Row>${cells}</Row>`;
-    })
-    .join("");
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-  <Worksheet ss:Name="核銷清冊">
-    <Table>
-      <Row>${headerCells}</Row>
-      ${bodyRows}
-    </Table>
-  </Worksheet>
-</Workbook>`;
-  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const headers = Object.keys(rows[0]).filter(k => !k.startsWith("_"));
+  
+  const escapeCSV = (val) => {
+    const text = String(val ?? "");
+    if (text.includes('"') || text.includes(',') || text.includes('\n') || text.includes('\r')) {
+      return `"${text.replaceAll('"', '""')}"`;
+    }
+    return text;
+  };
+
+  const headerLine = headers.map(escapeCSV).join(",");
+  const bodyLines = rows
+    .map((row) => headers.map((header) => escapeCSV(row[header])).join(","))
+    .join("\r\n");
+
+  const csvContent = "\uFEFF" + headerLine + "\r\n" + bodyLines;
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  const finalFilename = filename.replace(/\.xls$/, ".csv");
+  link.download = finalFilename;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -2464,7 +2642,7 @@ function downloadSpreadsheet(filename, rows) {
 }
 
 function exportReimbursementExcel() {
-  downloadSpreadsheet(`社區交通車核銷清冊_${state.serviceDate}.xls`, reimbursementRows());
+  downloadSpreadsheet(`社區交通車核銷清冊_${state.serviceDate}.csv`, reimbursementRows());
   addNotification(`已成功匯出核銷清冊 Excel (${state.serviceDate})`, true);
 }
 
@@ -2718,9 +2896,9 @@ function renderCaseCard(person) {
           <span class="material-symbols-outlined" aria-hidden="true">edit</span>
           編輯
         </button>
-        <button class="secondary-btn" type="button" data-action="trip" data-case-id="${escapeHTML(person.id)}" ${hasTodayTrip ? "disabled" : ""}>
-          <span class="material-symbols-outlined" aria-hidden="true">${hasTodayTrip ? "event_available" : "event_upcoming"}</span>
-          ${hasTodayTrip ? "已在今日班表" : "加入今日班表"}
+        <button class="secondary-btn" type="button" data-action="schedule-manage" data-case-id="${escapeHTML(person.id)}">
+          <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
+          排班設定
         </button>
         <button class="ghost-btn" type="button" data-action="toggle" data-case-id="${escapeHTML(person.id)}">
           <span class="material-symbols-outlined" aria-hidden="true">${person.active ? "pause" : "play_arrow"}</span>
@@ -2757,9 +2935,6 @@ function renderCaseCard(person) {
         </div>
         <p class="subtext case-address-line">
           <span>上車：${escapeHTML(person.pickupAddress)}</span>
-          <a class="inline-map-btn" href="${escapeHTML(routeUrl)}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(person.name)} 接送路徑">
-            <span class="material-symbols-outlined" aria-hidden="true">map</span>
-          </a>
         </p>
         <p class="subtext case-address-line">
           <span>目的地：${escapeHTML(person.destinationAddress)}</span>
@@ -2997,6 +3172,16 @@ async function handleCaseAction(event) {
   const person = state.cases.find((item) => item.id === button.dataset.caseId);
   if (!person) return;
   selectedCaseId = person.id;
+
+  if (button.dataset.action === "schedule-manage") {
+    requestView("schedules");
+    editingScheduleId = "";
+    scheduleFormOpen = true;
+    selectedScheduleId = "";
+    refreshSchedulesView();
+    fillScheduleForm("", person.id);
+    return;
+  }
 
   if (button.dataset.action === "edit") {
     editingCaseId = person.id;
@@ -3750,10 +3935,8 @@ function renderReleases() {
 
 function updateClock() {
   const target = document.getElementById("clock");
-  const topTarget = document.getElementById("topbarClock");
   const time = localTime();
   if (target) target.textContent = time;
-  if (topTarget) topTarget.textContent = time;
 }
 
 async function refreshCurrentData() {

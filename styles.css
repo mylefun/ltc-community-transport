@@ -182,7 +182,7 @@ button {
 
 .brand h1 {
   color: var(--brand);
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 900;
 }
 
@@ -367,12 +367,26 @@ button {
 }
 
 .dot.local {
-  background: var(--green);
+  background: #f39c12;
+  box-shadow: 0 0 0 4px rgba(243, 156, 18, 0.15);
 }
 
 .dot.online {
   background: var(--green);
   box-shadow: 0 0 0 5px rgba(52, 168, 83, 0.12);
+  animation: connection-pulse 2s infinite ease-in-out;
+}
+
+@keyframes connection-pulse {
+  0% {
+    box-shadow: 0 0 0 0px rgba(52, 168, 83, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(52, 168, 83, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0px rgba(52, 168, 83, 0);
+  }
 }
 
 .main-area {
@@ -1428,7 +1442,7 @@ textarea {
 .driver-assign-row {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 16px;
 }
 
 .driver-assign-row label {

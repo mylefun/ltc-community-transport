@@ -22,8 +22,8 @@
           <div class="brand">
             <span class="brand-mark material-symbols-outlined" aria-hidden="true">local_shipping</span>
             <div class="brand-text">
-              <p class="eyebrow">長照社區交通</p>
-              <h1>LTC Transport</h1>
+              <p class="eyebrow">社照會</p>
+              <h1>社區交通車接送系統</h1>
             </div>
           </div>
           <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="收合側邊選單">‹</button>
@@ -56,10 +56,6 @@
           <p class="muted-label">服務日期</p>
           <strong id="todayLabel"></strong>
           <div class="side-clock" id="clock">--:--</div>
-          <div class="connection-state">
-            <span class="dot local"></span>
-            <span>本機示範資料</span>
-          </div>
         </section>
       </aside>
 
@@ -81,6 +77,10 @@
                 <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
                 排班管理
               </button>
+              <button class="topbar-management-btn" type="button" data-topbar-view="reimbursements">
+                <span class="material-symbols-outlined" aria-hidden="true">payments</span>
+                核銷匯出
+              </button>
             </div>
           </div>
           <div class="topbar-actions">
@@ -101,8 +101,7 @@
               <span class="dot local"></span>
               <span id="topbarConnection">本機示範資料</span>
             </span>
-            <span class="topbar-clock" id="topbarClock">--:--</span>
-            <button class="topbar-logout" id="coordinatorLogoutBtn" type="button">
+             <button class="topbar-logout" id="coordinatorLogoutBtn" type="button">
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
               登出
             </button>
@@ -167,10 +166,6 @@
                   服務日期
                   <input type="date" id="serviceDatePicker" />
                 </label>
-                <button class="secondary-btn export-btn" type="button" id="exportReimbursementBtn">
-                  <span class="material-symbols-outlined" aria-hidden="true">table_view</span>
-                  匯出核銷Excel
-                </button>
                 <label>
                   司機
                   <select id="driverFilter"></select>
@@ -201,14 +196,6 @@
               <span class="count-pill" id="mapDriverCount"></span>
             </div>
             <div class="live-map" id="liveMap" aria-label="司機定位地圖"></div>
-          </section>
-
-          <section class="fleet-status-strip">
-            <div>
-              <p class="eyebrow">Live Fleet Feed</p>
-              <strong>車隊動態同步中</strong>
-            </div>
-            <span class="material-symbols-outlined" aria-hidden="true">sync</span>
           </section>
         </aside>
       </section>
@@ -610,11 +597,11 @@
                 </fieldset>
                 <label>
                   預定上車
-                  <input name="scheduledPickup" type="time" value="09:00" />
+                  <input name="scheduledPickup" type="time" value="07:00" />
                 </label>
                 <label>
                   預定送達
-                  <input name="scheduledDropoff" type="time" value="09:30" />
+                  <input name="scheduledDropoff" type="time" value="07:30" />
                 </label>
                 <label class="full">
                   上車地址
@@ -715,6 +702,35 @@
               </form>
             </div>
           </div>
+        </section>
+      </div>
+    </template>
+
+    <template id="reimbursementsTemplate">
+      <div class="case-workspace" id="reimbursementWorkspace">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">政府申報核銷</p>
+              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">payments</span>核銷月報表匯出</h3>
+            </div>
+            <div class="heading-actions">
+              <span class="count-pill" id="reimbursementCount">0 筆</span>
+            </div>
+          </div>
+          
+          <div class="reimbursement-filter-panel" style="display: flex; align-items: flex-end; gap: 16px; margin-bottom: 24px; padding: 18px; background: var(--surface-container); border-radius: 16px; border: 1px solid var(--line);">
+            <label style="display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 14px;">
+              選擇核銷年月
+              <input type="month" id="reimbursementMonthPicker" style="min-height: 40px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 16px; font-weight: 500;" />
+            </label>
+            <button class="primary-btn" id="doExportReimbursementBtn" type="button" style="min-height: 40px; box-shadow: var(--shadow-soft);">
+              <span class="material-symbols-outlined" aria-hidden="true">download</span>
+              匯出核銷報表 (CSV)
+            </button>
+          </div>
+          
+          <div class="case-list" id="reimbursementPreviewList"></div>
         </section>
       </div>
     </template>
