@@ -1,4 +1,4 @@
-const STORAGE_KEY = "ltc-community-transport-v1";
+const STORAGE_KEY = "ltc-community-transport-v2";
 const COORDINATOR_SESSION_KEY = "ltc-coordinator-unlocked";
 const COORDINATOR_PASSCODE_KEY = "ltc-coordinator-passcode";
 const FONT_SCALE_KEY = "ltc-font-scale";
@@ -738,7 +738,7 @@ function defaultState() {
       vehicleNo: "KAA-1032",
       routeLabel: "",
       pin: "135790",
-      homeLocation: { lat: 25.0409, lng: 121.5164 },
+      homeLocation: { lat: 24.757, lng: 121.785 },
       active: true,
     },
     {
@@ -749,7 +749,7 @@ function defaultState() {
       vehicleNo: "KAB-2210",
       routeLabel: "",
       pin: "246802",
-      homeLocation: { lat: 25.0311, lng: 121.4978 },
+      homeLocation: { lat: 24.757, lng: 121.785 },
       active: true,
     },
     {
@@ -760,7 +760,7 @@ function defaultState() {
       vehicleNo: "KAC-5198",
       routeLabel: "",
       pin: "975310",
-      homeLocation: { lat: 25.064, lng: 121.5423 },
+      homeLocation: { lat: 24.757, lng: 121.785 },
       active: true,
     },
   ];
@@ -780,11 +780,11 @@ function defaultState() {
       careLevel: "長照2.0 4級",
       mobility: "輪椅",
       assistiveDevice: "標準輪椅",
-      serviceArea: "中正區",
+      serviceArea: "壯圍鄉",
       careManager: "陳個管員",
       careManagerPhone: "02-2345-9901",
-      pickupAddress: "台北市中正區和平西路一段 38 號",
-      destinationAddress: "松柏日照中心",
+      pickupAddress: "宜蘭縣壯圍鄉古亭路48-16號",
+      destinationAddress: "壯圍鄉中央路2段265號",
       rideNote: "上車前請電話通知家屬，需協助輪椅固定。",
       note: "需協助輪椅固定，上車前請電話通知家屬。",
       active: true,
@@ -803,11 +803,11 @@ function defaultState() {
       careLevel: "長照2.0 3級",
       mobility: "需攙扶",
       assistiveDevice: "手杖",
-      serviceArea: "大安區",
+      serviceArea: "壯圍鄉",
       careManager: "林個管員",
       careManagerPhone: "02-2755-7120",
-      pickupAddress: "台北市大安區信義路三段 91 巷 6 號",
-      destinationAddress: "仁愛復能診所",
+      pickupAddress: "宜蘭縣壯圍鄉美功路一段 80 巷 21 號",
+      destinationAddress: "壯圍鄉中央路2段265號",
       rideNote: "聽力較弱，抵達時請慢慢說明。",
       note: "聽力較弱，抵達時請慢慢說明。",
       active: true,
@@ -826,11 +826,11 @@ function defaultState() {
       careLevel: "長照2.0 5級",
       mobility: "輪椅",
       assistiveDevice: "輪椅、陪同者",
-      serviceArea: "萬華區",
+      serviceArea: "壯圍鄉",
       careManager: "黃個管員",
       careManagerPhone: "02-2368-6722",
-      pickupAddress: "台北市萬華區西園路二段 122 號",
-      destinationAddress: "和平醫院復健科",
+      pickupAddress: "宜蘭縣壯圍鄉永美路二段 121 號",
+      destinationAddress: "壯圍鄉中央路2段265號",
       rideNote: "回程可能有藥袋，請提醒個案攜帶健保卡。",
       note: "回程可能有藥袋，請提醒個案攜帶健保卡。",
       active: true,
@@ -849,11 +849,11 @@ function defaultState() {
       careLevel: "長照2.0 2級",
       mobility: "可自行上下車",
       assistiveDevice: "無",
-      serviceArea: "中山區",
+      serviceArea: "壯圍鄉",
       careManager: "吳個管員",
       careManagerPhone: "02-2302-7116",
-      pickupAddress: "台北市中山區龍江路 55 巷 8 號",
-      destinationAddress: "長青據點",
+      pickupAddress: "宜蘭縣壯圍鄉新社路 54-3 號",
+      destinationAddress: "壯圍鄉中央路2段265號",
       rideNote: "固定週三參與據點課程。",
       note: "固定週三參與據點課程。",
       active: true,
@@ -872,11 +872,11 @@ function defaultState() {
       careLevel: "長照2.0 4級",
       mobility: "需攙扶",
       assistiveDevice: "助行器",
-      serviceArea: "士林區",
+      serviceArea: "壯圍鄉",
       careManager: "蔡個管員",
       careManagerPhone: "02-2558-7168",
-      pickupAddress: "台北市士林區文林路 320 號",
-      destinationAddress: "陽明日照中心",
+      pickupAddress: "壯圍鄉中央路2段265號",
+      destinationAddress: "壯圍鄉中央路2段265號",
       rideNote: "上午血糖較低，請確認已用早餐。",
       note: "上午血糖較低，請確認已用早餐。",
       active: true,
@@ -893,10 +893,10 @@ function defaultState() {
       scheduledDropoff: addMinutes(-25),
       pickupTime: addMinutes(-50),
       pickupAt: new Date(Date.now() - 50 * 60_000).toISOString(),
-      pickupLocation: { lat: 25.0268, lng: 121.5199, accuracy: 24, source: "demo" },
+      pickupLocation: { lat: 24.77218, lng: 121.80029, accuracy: 24, source: "demo" },
       dropoffTime: addMinutes(-24),
       dropoffAt: new Date(Date.now() - 24 * 60_000).toISOString(),
-      dropoffLocation: { lat: 25.0362, lng: 121.5278, accuracy: 22, source: "demo" },
+      dropoffLocation: { lat: 24.757, lng: 121.785, accuracy: 22, source: "demo" },
       purpose: "日照接送",
       status: "completed",
     },
@@ -909,7 +909,7 @@ function defaultState() {
       scheduledDropoff: addMinutes(12),
       pickupTime: addMinutes(-10),
       pickupAt: new Date(Date.now() - 10 * 60_000).toISOString(),
-      pickupLocation: { lat: 25.0322, lng: 121.5397, accuracy: 20, source: "demo" },
+      pickupLocation: { lat: 24.77088, lng: 121.78335, accuracy: 20, source: "demo" },
       dropoffTime: "",
       dropoffAt: "",
       dropoffLocation: null,
@@ -1013,17 +1013,12 @@ function seedDriverLocations(drivers, trips) {
 }
 
 function fallbackLocation(driverId, tripId = "") {
-  const baseLocations = {
-    drv_lin: { lat: 25.0394, lng: 121.5205 },
-    drv_wu: { lat: 25.0295, lng: 121.5076 },
-    drv_chen: { lat: 25.0618, lng: 121.5354 },
-  };
-  const base = baseLocations[driverId] ?? { lat: 25.0418, lng: 121.525 };
+  const base = { lat: 24.757, lng: 121.785 }; // 壯圍鄉中央路2段265號
   const seed = `${driverId}${tripId}${new Date().getMinutes()}`;
   const drift = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return {
-    lat: Number((base.lat + ((drift % 15) - 7) * 0.0007).toFixed(6)),
-    lng: Number((base.lng + ((drift % 11) - 5) * 0.0007).toFixed(6)),
+    lat: Number((base.lat + ((drift % 15) - 7) * 0.00007).toFixed(6)),
+    lng: Number((base.lng + ((drift % 11) - 5) * 0.00007).toFixed(6)),
   };
 }
 
@@ -2148,7 +2143,7 @@ function initOrUpdateLeafletMap() {
     leafletMapInstance = L.map(leafletMapCanvas, {
       zoomControl: false,
       attributionControl: false,
-      center: [25.0394, 121.5205],
+      center: [24.757, 121.785],
       zoom: 12
     });
 
@@ -2389,25 +2384,25 @@ function fitAllMapBounds(force = false) {
       maxZoom: 15
     });
   } else {
-    // Default fallback center to Taipei
-    leafletMapInstance.setView([25.0394, 121.5205], 12);
+    // Default fallback center to Zhuangwei
+    leafletMapInstance.setView([24.757, 121.785], 12);
   }
 }
 
 function caseCoordinate(caseId, type) {
   const known = {
-    case_001: { pickup: { lat: 25.0268, lng: 121.5199 }, destination: { lat: 25.0362, lng: 121.5278 } },
-    case_002: { pickup: { lat: 25.0322, lng: 121.5397 }, destination: { lat: 25.0349, lng: 121.552 } },
-    case_003: { pickup: { lat: 25.0302, lng: 121.509 }, destination: { lat: 25.0357, lng: 121.5062 } },
-    case_004: { pickup: { lat: 25.064, lng: 121.5423 }, destination: { lat: 25.0691, lng: 121.5325 } },
-    case_005: { pickup: { lat: 25.0875, lng: 121.5255 }, destination: { lat: 25.0976, lng: 121.532 } },
+    case_001: { pickup: { lat: 24.77218, lng: 121.80029 }, destination: { lat: 24.757, lng: 121.785 } }, // 古亭社區 -> 心安居
+    case_002: { pickup: { lat: 24.77088, lng: 121.78335 }, destination: { lat: 24.757, lng: 121.785 } }, // 功勞社區 -> 心安居
+    case_003: { pickup: { lat: 24.77782, lng: 121.78892 }, destination: { lat: 24.757, lng: 121.785 } }, // 美城社區 -> 心安居
+    case_004: { pickup: { lat: 24.78592, lng: 121.80945 }, destination: { lat: 24.757, lng: 121.785 } }, // 新社社區 -> 心安居
+    case_005: { pickup: { lat: 24.757, lng: 121.785 }, destination: { lat: 24.757, lng: 121.785 } },     // 心安居 -> 心安居
   };
 
   if (known[caseId]?.[type]) return known[caseId][type];
   const seed = [...`${caseId}-${type}`].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return {
-    lat: Number((25.018 + (seed % 70) * 0.0011).toFixed(6)),
-    lng: Number((121.49 + (seed % 85) * 0.0011).toFixed(6)),
+    lat: Number((24.75 + (seed % 50) * 0.0011).toFixed(6)),
+    lng: Number((121.77 + (seed % 75) * 0.0011).toFixed(6)),
   };
 }
 
