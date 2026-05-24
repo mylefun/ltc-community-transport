@@ -43,6 +43,16 @@ function todayKey(date = new Date()) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
+function cleanId(val) {
+  if (!val) return null;
+  const str = String(val).trim();
+  if (str.includes("_")) {
+    const parts = str.split("_");
+    return parts[parts.length - 1];
+  }
+  return str;
+}
+
 function localTime(date = new Date()) {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
@@ -350,6 +360,8 @@ function mapCase(person) {
     rideNote: person.ride_note || "",
     note: person.notes || "",
     active: person.active,
+    serviceStartDate: person.service_start_date || "",
+    serviceEndDate: person.service_end_date || "",
   };
 }
 
@@ -502,10 +514,10 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "assign_driver") {
-    await supabase(`daily_rides?id=eq.${encodeURIComponent(payload.tripId)}`, {
+    await supabase(`daily_rides?id=eq.${encodeURIComponent(cleanId(payload.tripId))}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ driver_id: payload.driverId }),
+      body: JSON.stringify({ driver_id: cleanId(payload.driverId) }),
     });
   }
 
@@ -521,7 +533,7 @@ async function handleAction(action, payload = {}) {
         body: JSON.stringify({
           service_date: todayKey(),
           case_id: person[0].id,
-          driver_id: payload.trip.driverId,
+          driver_id: cleanId(payload.trip.driverId),
           scheduled_pickup: payload.trip.scheduledPickup,
           scheduled_dropoff: payload.trip.scheduledDropoff,
           pickup_address: payload.case.pickupAddress,
@@ -539,7 +551,7 @@ async function handleAction(action, payload = {}) {
         body: JSON.stringify({
           service_date: todayKey(),
           case_id: person[0].id,
-          driver_id: payload.tripReturn.driverId,
+          driver_id: cleanId(payload.tripReturn.driverId),
           scheduled_pickup: payload.tripReturn.scheduledPickup,
           scheduled_dropoff: payload.tripReturn.scheduledDropoff,
           pickup_address: payload.tripReturn.pickupAddress,
@@ -552,13 +564,13 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "update_case") {
-    const duplicate = await findDuplicateCase(payload.case, payload.case.id);
+    const duplicate = await findDuplicateCase(payload.case, cleanId(payload.case.id));
     if (duplicate) throw new Error(duplicate);
-    await writeCase("PATCH", `cases?id=eq.${encodeURIComponent(payload.case.id)}`, payload.case);
+    await writeCase("PATCH", `cases?id=eq.${encodeURIComponent(cleanId(payload.case.id))}`, payload.case);
   }
 
   if (action === "toggle_case") {
-    await supabase(`cases?id=eq.${encodeURIComponent(payload.caseId)}`, {
+    await supabase(`cases?id=eq.${encodeURIComponent(cleanId(payload.caseId))}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ active: payload.active }),
@@ -566,15 +578,16 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "delete_case") {
-    await supabase(`daily_rides?case_id=eq.${encodeURIComponent(payload.caseId)}`, {
+    const cid = cleanId(payload.caseId);
+    await supabase(`daily_rides?case_id=eq.${encodeURIComponent(cid)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
-    await supabase(`schedules?case_id=eq.${encodeURIComponent(payload.caseId)}`, {
+    await supabase(`schedules?case_id=eq.${encodeURIComponent(cid)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
-    await supabase(`cases?id=eq.${encodeURIComponent(payload.caseId)}`, {
+    await supabase(`cases?id=eq.${encodeURIComponent(cid)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
@@ -591,9 +604,9 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "update_driver") {
-    const duplicate = await findDuplicateDriver(payload.driver, payload.driver.id);
+    const duplicate = await findDuplicateDriver(payload.driver, cleanId(payload.driver.id));
     if (duplicate) throw new Error(duplicate);
-    await supabase(`drivers?id=eq.${encodeURIComponent(payload.driver.id)}`, {
+    await supabase(`drivers?id=eq.${encodeURIComponent(cleanId(payload.driver.id))}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify(driverPayload(payload.driver)),
@@ -601,7 +614,7 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "toggle_driver") {
-    await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
+    await supabase(`drivers?id=eq.${encodeURIComponent(cleanId(payload.driverId))}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ active: payload.active }),
@@ -609,26 +622,28 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "delete_driver") {
-    await supabase(`daily_rides?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
+    const did = cleanId(payload.driverId);
+    await supabase(`daily_rides?driver_id=eq.${encodeURIComponent(did)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
-    await supabase(`schedules?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
+    await supabase(`schedules?driver_id=eq.${encodeURIComponent(did)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
-    await supabase(`driver_locations?driver_id=eq.${encodeURIComponent(payload.driverId)}`, {
+    await supabase(`driver_locations?driver_id=eq.${encodeURIComponent(did)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
-    await supabase(`drivers?id=eq.${encodeURIComponent(payload.driverId)}`, {
+    await supabase(`drivers?id=eq.${encodeURIComponent(did)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
   }
 
   if (action === "create_trip") {
-    const person = await supabase(`cases?select=*&id=eq.${encodeURIComponent(payload.caseId)}&limit=1`);
+    const cid = cleanId(payload.caseId);
+    const person = await supabase(`cases?select=*&id=eq.${encodeURIComponent(cid)}&limit=1`);
     if (!person[0]) throw new Error("Case not found");
 
     await supabase("daily_rides", {
@@ -637,7 +652,7 @@ async function handleAction(action, payload = {}) {
       body: JSON.stringify({
         service_date: todayKey(),
         case_id: person[0].id,
-        driver_id: payload.driverId,
+        driver_id: cleanId(payload.driverId),
         scheduled_pickup: addMinutes(30),
         scheduled_dropoff: addMinutes(60),
         pickup_address: person[0].pickup_address,
@@ -649,7 +664,7 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "delete_trip") {
-    await supabase(`daily_rides?id=eq.${encodeURIComponent(payload.tripId)}`, {
+    await supabase(`daily_rides?id=eq.${encodeURIComponent(cleanId(payload.tripId))}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
@@ -658,9 +673,9 @@ async function handleAction(action, payload = {}) {
   if (action === "create_schedule" || action === "update_schedule") {
     const schedule = payload.schedule || {};
     const body = {
-      id: schedule.id,
-      case_id: schedule.caseId,
-      driver_id: schedule.driverId,
+      id: cleanId(schedule.id),
+      case_id: cleanId(schedule.caseId),
+      driver_id: cleanId(schedule.driverId),
       schedule_type: schedule.scheduleType || "single",
       service_date: schedule.serviceDate || null,
       start_date: schedule.startDate || null,
@@ -684,7 +699,7 @@ async function handleAction(action, payload = {}) {
         body: JSON.stringify(body),
       });
     } else {
-      await supabase(`schedules?id=eq.${encodeURIComponent(schedule.id)}`, {
+      await supabase(`schedules?id=eq.${encodeURIComponent(cleanId(schedule.id))}`, {
         method: "PATCH",
         headers: { Prefer: "return=representation" },
         body: JSON.stringify(body),
@@ -696,7 +711,7 @@ async function handleAction(action, payload = {}) {
     const patch = { status: payload.status };
     if (payload.endDate !== undefined) patch.end_date = payload.endDate || null;
     if (payload.status === "active") patch.stop_reason = null;
-    await supabase(`schedules?id=eq.${encodeURIComponent(payload.scheduleId)}`, {
+    await supabase(`schedules?id=eq.${encodeURIComponent(cleanId(payload.scheduleId))}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify(patch),
@@ -704,11 +719,12 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "delete_schedule") {
-    await supabase(`daily_rides?schedule_id=eq.${encodeURIComponent(payload.scheduleId)}`, {
+    const sid = cleanId(payload.scheduleId);
+    await supabase(`daily_rides?schedule_id=eq.${encodeURIComponent(sid)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
-    await supabase(`schedules?id=eq.${encodeURIComponent(payload.scheduleId)}`, {
+    await supabase(`schedules?id=eq.${encodeURIComponent(sid)}`, {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
@@ -717,9 +733,9 @@ async function handleAction(action, payload = {}) {
   if (action === "import_schedules") {
     const list = Array.isArray(payload.schedules) ? payload.schedules : [];
     const bodies = list.map((schedule) => ({
-      id: schedule.id,
-      case_id: schedule.caseId,
-      driver_id: schedule.driverId,
+      id: cleanId(schedule.id),
+      case_id: cleanId(schedule.caseId),
+      driver_id: cleanId(schedule.driverId),
       schedule_type: schedule.scheduleType || "single",
       service_date: schedule.serviceDate || null,
       start_date: schedule.startDate || null,
@@ -746,14 +762,15 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "create_schedule_override") {
-    const rows = await supabase(`schedules?select=*&id=eq.${encodeURIComponent(payload.scheduleId)}&limit=1`);
+    const sid = cleanId(payload.scheduleId);
+    const rows = await supabase(`schedules?select=*&id=eq.${encodeURIComponent(sid)}&limit=1`);
     const schedule = rows[0];
     if (!schedule) throw new Error("Schedule not found");
     const overrides = Array.isArray(schedule.date_overrides) ? schedule.date_overrides : [];
     const nextOverride = payload.override || {};
     const filtered = overrides.filter((item) => String(item.serviceDate || item.service_date || "") !== String(nextOverride.serviceDate || nextOverride.service_date || ""));
     filtered.push(nextOverride);
-    await supabase(`schedules?id=eq.${encodeURIComponent(schedule.id)}`, {
+    await supabase(`schedules?id=eq.${encodeURIComponent(sid)}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ date_overrides: filtered }),
@@ -761,12 +778,13 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "delete_schedule_override") {
-    const rows = await supabase(`schedules?select=*&id=eq.${encodeURIComponent(payload.scheduleId)}&limit=1`);
+    const sid = cleanId(payload.scheduleId);
+    const rows = await supabase(`schedules?select=*&id=eq.${encodeURIComponent(sid)}&limit=1`);
     const schedule = rows[0];
     if (!schedule) throw new Error("Schedule not found");
     const overrides = Array.isArray(schedule.date_overrides) ? schedule.date_overrides : [];
     const filtered = overrides.filter((item) => String(item.serviceDate || item.service_date || "") !== String(payload.serviceDate || ""));
-    await supabase(`schedules?id=eq.${encodeURIComponent(schedule.id)}`, {
+    await supabase(`schedules?id=eq.${encodeURIComponent(sid)}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ date_overrides: filtered }),
@@ -774,10 +792,12 @@ async function handleAction(action, payload = {}) {
   }
 
   if (action === "pickup") {
+    payload.tripId = cleanId(payload.tripId);
     await markRideEvent("pickup", payload);
   }
 
   if (action === "dropoff") {
+    payload.tripId = cleanId(payload.tripId);
     await markRideEvent("dropoff", payload);
   }
 
@@ -864,6 +884,8 @@ function casePayload(person, includeExtended = true) {
     ride_note: person.rideNote || null,
     notes: person.note || null,
     active: person.active ?? true,
+    service_start_date: person.serviceStartDate || null,
+    service_end_date: person.serviceEndDate || null,
   };
 
   if (!includeExtended) return payload;

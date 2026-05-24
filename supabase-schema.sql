@@ -79,6 +79,8 @@ create table if not exists public.cases (
   ride_note text,
   notes text,
   active boolean not null default true,
+  service_start_date date,
+  service_end_date date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -99,7 +101,9 @@ alter table public.cases
   add column if not exists community_site text,
   add column if not exists quota_note text,
   add column if not exists destinations jsonb not null default '[]'::jsonb,
-  add column if not exists ride_note text;
+  add column if not exists ride_note text,
+  add column if not exists service_start_date date,
+  add column if not exists service_end_date date;
 
 create unique index if not exists idx_cases_identity_no
   on public.cases(identity_no)

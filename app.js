@@ -67,6 +67,20 @@ const communitySites = [
 
 const releaseNotes = [
   {
+    version: "v0.8.0",
+    date: "2026-05-24",
+    items: [
+      "新增個案「開始服務日期」及「結案日期」欄位，並於個案卡片顯眼處直接顯示",
+      "優化接送排程介面，動作按鈕改為純圖示（圖標式）並支援懸浮說明以防文字重疊擠壓",
+      "接送排程移除未選取時的藍色膠囊提示，保持名冊介面清爽簡約",
+      "接送排程類型支援「唯讀與自動判定」，直接依據填寫單次日期或週期欄位切換類型並重置非必要欄位",
+      "每週週期性排程無結束日期時，介面文字自動以「(持續無特定結束日)」識別呈現",
+      "每週週期性排程強制「每週星期幾」項目為必填以防欄位漏填",
+      "解決 Supabase 因 ID 前綴 (如 sch_) 導致的 400 儲存錯誤，已於前後端全面落實 UUID 格式淨化機制 (cleanId)",
+      "個案及排程表單之「啟用回程接送」加粗並設為醒目紅色以引導設定，必填欄位標註紅色星號並維持同列",
+    ],
+  },
+  {
     version: "v0.7.3",
     date: "2026-05-23",
     items: [
@@ -206,6 +220,7 @@ let dataMessage = "本機示範資料";
 let flashMessage = "";
 let flashTone = "success";
 let flashScope = "global";
+let flashTimeout = null;
 
 let state = normalizeState(loadState());
 state.serviceDate = todayKey();
@@ -240,6 +255,12 @@ function normalizeBirthDate(value) {
 }
 
 function uid(prefix) {
+  if (typeof dataMode !== "undefined" && dataMode === "supabase") {
+    if (window.crypto?.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+  }
   if (window.crypto?.randomUUID) {
     return `${prefix}_${window.crypto.randomUUID()}`;
   }
@@ -376,6 +397,62 @@ function parseDestinations(text, fallback = "") {
   return normalizeDestinations({ destinations: parsed, destinationAddress: fallback });
 }
 
+function normalizeAddressForCompare(addr) {
+  if (!addr) return "";
+  return String(addr)
+    .replace(/\s+/g, "")
+    .replace(/[|｜].*$/, "") // Strip alias
+    .replace(/台/g, "臺");   // Standardize characters
+}
+
+function getAddressAlias(val, caseIdOrObj = null) {
+  if (!val) return "";
+  const parts = val.split(/[|｜]/);
+  if (parts.length > 1) {
+    return parts[0].trim();
+  }
+  
+  const cleanAddress = parts[0].trim();
+  const normClean = normalizeAddressForCompare(cleanAddress);
+  
+  // 1. Try to find in centrally managed communitySites
+  const site = communitySites.find(s => {
+    const normSiteName = normalizeAddressForCompare(s.name);
+    const normSiteAddr = normalizeAddressForCompare(s.address);
+    return (
+      normClean === normSiteName ||
+      normClean.includes(normSiteName) ||
+      normClean === normSiteAddr ||
+      normClean.includes(normSiteAddr) ||
+      normSiteAddr.includes(normClean)
+    );
+  });
+  
+  if (site) {
+    return site.name;
+  }
+  
+  // 2. Try to find if it's the home address
+  if (caseIdOrObj) {
+    const person = typeof caseIdOrObj === "object" ? caseIdOrObj : getCase(caseIdOrObj);
+    if (person && person.pickupAddress) {
+      const normHome = normalizeAddressForCompare(person.pickupAddress);
+      if (normClean === normHome || normClean.includes(normHome) || normHome.includes(normClean)) {
+        return "住家";
+      }
+    }
+  }
+  
+  // 3. Fallback: return a shortened clean version of the address
+  return cleanAddress.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 8);
+}
+
+function getAddressReal(val) {
+  if (!val) return "";
+  const parts = val.split(/[|｜]/);
+  return (parts[1] || parts[0]).trim();
+}
+
 function normalizeDaysOfWeek(value) {
   const items = Array.isArray(value) ? value : [];
   return [...new Set(items.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 0 && item <= 6))].sort(
@@ -425,7 +502,7 @@ function scheduleSummary(schedule, serviceDate = state.serviceDate) {
   const datePart =
     schedule.scheduleType === "single"
       ? `單次 · ${schedule.serviceDate || "未定"}`
-      : `每週 · ${schedule.daysOfWeek.map((day) => weekdayLabels[day]).join("、") || "未選"}${schedule.endDate ? ` 至 ${schedule.endDate}` : ""}`;
+      : `每週 · ${schedule.daysOfWeek.map((day) => weekdayLabels[day]).join("、") || "未選"}${schedule.endDate ? ` 至 ${schedule.endDate}` : " (持續無特定結束日)"}`;
   const override = getScheduleOverride(schedule, serviceDate);
   const overrideText = override
     ? override.cancelService
@@ -1346,6 +1423,16 @@ function setFlash(message, tone = "success", scope = "global") {
   flashTone = tone;
   flashScope = scope;
   renderFlash();
+
+  if (flashTimeout) {
+    clearTimeout(flashTimeout);
+  }
+  if (message) {
+    flashTimeout = setTimeout(() => {
+      flashMessage = "";
+      renderFlash();
+    }, 3000);
+  }
 }
 
 function renderFlash() {
@@ -1567,7 +1654,9 @@ function scheduleDaysText(schedule) {
     return schedule.serviceDate ? `單次 · ${schedule.serviceDate}` : "單次 · 未定日期";
   }
   const days = (schedule.daysOfWeek || []).map((day) => weekdayLabels[day]).join("、") || "未選";
-  return `每週 · ${days}${schedule.startDate ? ` · ${schedule.startDate}` : ""}${schedule.endDate ? ` 至 ${schedule.endDate}` : ""}`;
+  const startPart = schedule.startDate ? ` · ${schedule.startDate}` : "";
+  const endPart = schedule.endDate ? ` 至 ${schedule.endDate}` : " (持續無特定結束日)";
+  return `每週 · ${days}${startPart}${endPart}`;
 }
 
 function scheduleCard(schedule) {
@@ -1579,31 +1668,24 @@ function scheduleCard(schedule) {
   const actions = selected
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(caseItem?.name || "排程")} 操作選項">
-        <button class="primary-btn" type="button" data-schedule-action="edit" data-schedule-id="${escapeHTML(schedule.id)}">
+        <button class="primary-btn" type="button" data-schedule-action="edit" data-schedule-id="${escapeHTML(schedule.id)}" title="編輯排程" aria-label="編輯排程">
           <span class="material-symbols-outlined" aria-hidden="true">edit</span>
-          編輯
         </button>
-        <button class="ghost-btn" type="button" data-schedule-action="toggle" data-schedule-id="${escapeHTML(schedule.id)}">
+        <button class="ghost-btn" type="button" data-schedule-action="toggle" data-schedule-id="${escapeHTML(schedule.id)}" title="${schedule.status === "active" ? "暫停排程" : "恢復排程"}" aria-label="${schedule.status === "active" ? "暫停排程" : "恢復排程"}">
           <span class="material-symbols-outlined" aria-hidden="true">${schedule.status === "active" ? "pause" : "play_arrow"}</span>
-          ${schedule.status === "active" ? "暫停" : "恢復"}
         </button>
-        <button class="secondary-btn" type="button" data-schedule-action="override" data-schedule-id="${escapeHTML(schedule.id)}">
+        <button class="secondary-btn" type="button" data-schedule-action="override" data-schedule-id="${escapeHTML(schedule.id)}" title="例外變更" aria-label="例外變更">
           <span class="material-symbols-outlined" aria-hidden="true">rule</span>
-          例外變更
         </button>
-        <button class="danger-btn" type="button" data-schedule-action="stop" data-schedule-id="${escapeHTML(schedule.id)}">
+        <button class="danger-btn" type="button" data-schedule-action="stop" data-schedule-id="${escapeHTML(schedule.id)}" title="提前停止" aria-label="提前停止">
           <span class="material-symbols-outlined" aria-hidden="true">stop_circle</span>
-          提前停止
         </button>
-        <button class="danger-btn" type="button" data-schedule-action="delete" data-schedule-id="${escapeHTML(schedule.id)}">
+        <button class="danger-btn" type="button" data-schedule-action="delete" data-schedule-id="${escapeHTML(schedule.id)}" title="刪除排程" aria-label="刪除排程">
           <span class="material-symbols-outlined" aria-hidden="true">delete</span>
-          刪除
         </button>
       </div>
     `
-    : `
-      <div class="case-card-hint">點選排程顯示操作</div>
-    `;
+    : ``;
 
   return `
     <article class="case-card ${selected ? "selected" : ""}" data-schedule-id="${escapeHTML(schedule.id)}" tabindex="0">
@@ -1617,7 +1699,7 @@ function scheduleCard(schedule) {
         <p class="subtext">上車 ${escapeHTML(schedule.scheduledPickup)} · 送達 ${escapeHTML(schedule.scheduledDropoff)}</p>
       </div>
       <div>
-        <p class="subtext">目的地：${escapeHTML(schedule.destinationAddress || "未填")}</p>
+        <p class="subtext">目的地：<strong>${escapeHTML(getAddressAlias(schedule.destinationAddress || "", caseItem))}</strong> <span style="font-size: 11px; color: var(--muted); margin-left: 4px;">${escapeHTML(getAddressReal(schedule.destinationAddress || ""))}</span></p>
         <p class="subtext">服務項目：${escapeHTML(schedule.purpose || "未填")}</p>
         <p class="subtext">特殊需求：${escapeHTML(schedule.specialRequirements || "無")}</p>
         <p class="subtext">例外變更：${overrideCount} 筆</p>
@@ -1630,15 +1712,14 @@ function scheduleCard(schedule) {
 function updateScheduleFormMode() {
   const form = document.getElementById("scheduleForm");
   if (!form) return;
-  const scheduleType = form.elements.scheduleType?.value || "single";
   const singleLabel = form.elements.serviceDate?.closest("label");
   const startLabel = form.elements.startDate?.closest("label");
   const endLabel = form.elements.endDate?.closest("label");
   const weekdayFieldset = form.querySelector(".weekday-fieldset");
-  if (singleLabel) singleLabel.hidden = scheduleType !== "single";
-  if (startLabel) startLabel.hidden = scheduleType !== "weekly";
-  if (endLabel) endLabel.hidden = scheduleType !== "weekly";
-  if (weekdayFieldset) weekdayFieldset.hidden = scheduleType !== "weekly";
+  if (singleLabel) singleLabel.hidden = false;
+  if (startLabel) startLabel.hidden = false;
+  if (endLabel) endLabel.hidden = false;
+  if (weekdayFieldset) weekdayFieldset.hidden = false;
 }
 
 function fillScheduleForm(scheduleId = "", defaultCaseId = "") {
@@ -1650,11 +1731,10 @@ function fillScheduleForm(scheduleId = "", defaultCaseId = "") {
     form.elements.id.value = "";
     form.elements.scheduleType.value = "single";
     form.elements.serviceDate.value = state.serviceDate || todayKey();
-    form.elements.startDate.value = state.serviceDate || todayKey();
+    form.elements.startDate.value = "";
     form.elements.endDate.value = "";
     [...form.querySelectorAll('input[name="daysOfWeek"]')].forEach((item) => {
-      const val = Number(item.value);
-      item.checked = val >= 1 && val <= 5;
+      item.checked = false;
     });
     form.elements.scheduledPickup.value = "07:00";
     form.elements.scheduledDropoff.value = "07:30";
@@ -1680,12 +1760,13 @@ function fillScheduleForm(scheduleId = "", defaultCaseId = "") {
   form.elements.id.value = schedule.id;
   form.elements.caseId.value = schedule.caseId;
   form.elements.driverId.value = schedule.driverId;
+  const isWeekly = schedule.scheduleType === "weekly";
   form.elements.scheduleType.value = schedule.scheduleType || "single";
-  form.elements.serviceDate.value = schedule.serviceDate || state.serviceDate || todayKey();
-  form.elements.startDate.value = schedule.startDate || state.serviceDate || todayKey();
-  form.elements.endDate.value = schedule.endDate || "";
+  form.elements.serviceDate.value = isWeekly ? "" : (schedule.serviceDate || state.serviceDate || todayKey());
+  form.elements.startDate.value = isWeekly ? (schedule.startDate || state.serviceDate || todayKey()) : "";
+  form.elements.endDate.value = isWeekly ? (schedule.endDate || "") : "";
   [...form.querySelectorAll('input[name="daysOfWeek"]')].forEach((item) => {
-    item.checked = (schedule.daysOfWeek || []).includes(Number(item.value));
+    item.checked = isWeekly ? (schedule.daysOfWeek || []).includes(Number(item.value)) : false;
   });
   form.elements.scheduledPickup.value = schedule.scheduledPickup || "09:00";
   form.elements.scheduledDropoff.value = schedule.scheduledDropoff || "09:30";
@@ -1874,7 +1955,45 @@ function renderScheduleManager() {
     scheduleFormOpen = false;
     refreshSchedulesView();
   });
-  document.getElementById("scheduleTypeSelect").addEventListener("change", updateScheduleFormMode);
+  const scheduleTypeSelect = document.getElementById("scheduleTypeSelect");
+  if (scheduleTypeSelect) {
+    scheduleTypeSelect.addEventListener("change", updateScheduleFormMode);
+  }
+
+  // Auto-infer scheduleType based on Date inputs and Weekday selections
+  const form = document.getElementById("scheduleForm");
+  if (form) {
+    const serviceDateInput = form.elements.serviceDate;
+    const startDateInput = form.elements.startDate;
+    const endDateInput = form.elements.endDate;
+    const daysOfWeekCheckboxes = form.querySelectorAll('input[name="daysOfWeek"]');
+
+    if (serviceDateInput) {
+      serviceDateInput.addEventListener("input", () => {
+        if (serviceDateInput.value) {
+          if (scheduleTypeSelect) scheduleTypeSelect.value = "single";
+          if (startDateInput) startDateInput.value = "";
+          if (endDateInput) endDateInput.value = "";
+          [...daysOfWeekCheckboxes].forEach(cb => cb.checked = false);
+        }
+      });
+    }
+
+    const handleWeeklyInteraction = () => {
+      if (scheduleTypeSelect) scheduleTypeSelect.value = "weekly";
+      if (serviceDateInput) serviceDateInput.value = "";
+    };
+
+    if (startDateInput) {
+      startDateInput.addEventListener("input", handleWeeklyInteraction);
+    }
+    if (endDateInput) {
+      endDateInput.addEventListener("input", handleWeeklyInteraction);
+    }
+    [...daysOfWeekCheckboxes].forEach(cb => {
+      cb.addEventListener("change", handleWeeklyInteraction);
+    });
+  }
   document.getElementById("scheduleList").addEventListener("click", handleScheduleAction);
   document.getElementById("scheduleOverrideForm").addEventListener("submit", handleScheduleOverrideSubmit);
   document.getElementById("scheduleOverrideCancelBtn").addEventListener("click", () => {
@@ -1904,7 +2023,7 @@ function scheduleFormPayload(form) {
     id: String(form.get("id") || "").trim(),
     caseId: String(form.get("caseId") || "").trim(),
     driverId: String(form.get("driverId") || "").trim(),
-    scheduleType: String(form.get("scheduleType") || "single"),
+    scheduleType: document.getElementById("scheduleTypeSelect")?.value || String(form.get("scheduleType") || "single"),
     serviceDate: String(form.get("serviceDate") || "").trim(),
     startDate: String(form.get("startDate") || "").trim(),
     endDate: String(form.get("endDate") || "").trim(),
@@ -1922,12 +2041,39 @@ function scheduleFormPayload(form) {
 }
 
 function validateSchedulePayload(schedule) {
-  if (!schedule.caseId || !schedule.driverId) return "請先選擇個案與司機。";
-  if (schedule.scheduleType === "single" && !schedule.serviceDate) return "單次排程請填單次日期。";
-  if (schedule.scheduleType === "weekly" && !schedule.daysOfWeek.length) return "週期排程至少要選一個星期。";
-  if (schedule.scheduleType === "weekly" && !schedule.startDate) return "週期排程請填起始日期。";
-  if (!schedule.scheduledPickup) return "請填預定上車時間。";
-  if (!schedule.destinationAddress) return "請填目的地。";
+  const errors = [];
+
+  if (!schedule.caseId) {
+    errors.push("【個案】為必填欄位：請點選下拉選單選擇一位服務個案。");
+  }
+  if (!schedule.driverId) {
+    errors.push("【指派司機】為必填欄位：請點選下拉選單指派一位司機及車輛。");
+  }
+
+  if (schedule.scheduleType === "single") {
+    if (!schedule.serviceDate) {
+      errors.push("【單次日期】為必填欄位：因為排程類型是「單次」，請填寫具體的接送服務日期。");
+    }
+  } else if (schedule.scheduleType === "weekly") {
+    if (!schedule.startDate) {
+      errors.push("【起始日期】為必填欄位：因為排程類型是「每週週期」，請填寫排班何時開始生效。");
+    }
+    if (!schedule.daysOfWeek || schedule.daysOfWeek.length === 0) {
+      errors.push("【每週星期】為必填欄位：因為排程類型是「每週週期」，請至少勾選一個重複的星期（例如星期一、星期三）。");
+    }
+  }
+
+  if (!schedule.scheduledPickup) {
+    errors.push("【預定上車時間】為必填欄位：請點選輸入預定接送上車的時間（例如 08:30）。");
+  }
+  if (!schedule.destinationAddress) {
+    errors.push("【目的地】為必填欄位：請輸入送達地址或選擇一個社區據點。");
+  }
+
+  if (errors.length > 0) {
+    return "💡 請檢查以下必填欄位尚未填寫：\n" + errors.map((err, i) => `${i + 1}. ${err}`).join("\n");
+  }
+
   return "";
 }
 
@@ -2620,15 +2766,16 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 function resolveCoordinate(address, caseId, type) {
+  const realAddress = getAddressReal(address);
   const site = communitySites.find(s => 
-    (s.name && address.includes(s.name)) || 
-    (s.address && address.includes(s.address)) || 
-    (s.address && s.address.includes(address))
+    (s.name && realAddress.includes(s.name)) || 
+    (s.address && realAddress.includes(s.address)) || 
+    (s.address && s.address.includes(realAddress))
   );
   if (site) return { lat: site.lat, lng: site.lng };
 
-  const isYilan = /宜蘭|壯圍|五結|羅東/.test(address);
-  const seed = [...(address || `${caseId}-${type}`)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const isYilan = /宜蘭|壯圍|五結|羅東/.test(realAddress);
+  const seed = [...(realAddress || `${caseId}-${type}`)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   
   if (isYilan) {
     return {
@@ -2643,7 +2790,14 @@ function resolveCoordinate(address, caseId, type) {
   }
 }
 
-function getLocationName(address, isHome) {
+function getLocationName(address, isHome, caseId = null) {
+  if (address && (address.includes("｜") || address.includes("|"))) {
+    return getAddressAlias(address);
+  }
+  const alias = getAddressAlias(address, caseId);
+  if (alias && alias !== address && alias !== "住家" && !/^\d/.test(alias)) {
+    return alias;
+  }
   if (isHome) return "自宅";
   const site = communitySites.find(s => address.includes(s.name) || s.address.includes(address) || address.includes(s.address));
   if (site) return site.name;
@@ -2715,8 +2869,8 @@ function reimbursementRows(selectedMonth) {
         "C碼必填-服務內容": "",
         "C碼必填-指導建議摘要": "",
         "OT01必填-餐別\n1.早餐\n2.午餐\n3.晚餐": "",
-        "BD03、DA01使用-出發地": depAddress,
-        "BD03、DA01使用-目的地": arrAddress,
+        "BD03、DA01使用-出發地": getAddressReal(depAddress),
+        "BD03、DA01使用-目的地": getAddressReal(arrAddress),
         "BD03、DA01使用-出發地(緯度)": depCoord.lat,
         "BD03、DA01使用-出發地(經度)": depCoord.lng,
         "BD03、DA01使用-目的地(緯度)": arrCoord.lat,
@@ -2829,12 +2983,12 @@ function googleMapsRouteUrl(trip) {
     params.set("origin", `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`);
   }
 
-  const pickup = trip.pickupAddress || person?.pickupAddress || "";
+  const pickup = getAddressReal(trip.pickupAddress || person?.pickupAddress || "");
   if (pickup) {
     params.set("waypoints", pickup);
   }
 
-  params.set("destination", trip.destinationAddress || person?.destinationAddress || person?.pickupAddress || "");
+  params.set("destination", getAddressReal(trip.destinationAddress || person?.destinationAddress || person?.pickupAddress || ""));
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
@@ -2843,8 +2997,8 @@ function googleMapsCaseRouteUrl(person) {
     api: "1",
     travelmode: "driving",
   });
-  params.set("origin", person.pickupAddress || "");
-  params.set("destination", person.destinationAddress || person.pickupAddress || "");
+  params.set("origin", getAddressReal(person.pickupAddress || ""));
+  params.set("destination", getAddressReal(person.destinationAddress || person.pickupAddress || ""));
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
@@ -2892,10 +3046,10 @@ function renderCases(host = document.getElementById("appView")) {
     const site = communitySites.find((item) => item.name === event.target.value);
     const form = document.getElementById("caseForm");
     if (!site || !form) return;
-    form.elements.destinationAddress.value = site.address;
+    form.elements.destinationAddress.value = `${site.name}｜${site.address}`;
     const current = parseDestinations(form.elements.destinationsText.value, form.elements.destinationAddress.value);
     form.elements.destinationsText.value = destinationsToText([...current, { name: site.name, address: site.address }]);
-    form.elements.tripDestination.value = site.address;
+    form.elements.tripDestination.value = `${site.name}｜${site.address}`;
   });
 
   document.getElementById("openCaseFormBtn").addEventListener("click", () => {
@@ -2970,7 +3124,7 @@ function renderCaseCard(person) {
     : "<li>未填</li>";
   const destinationList = normalizeDestinations(person)
     .slice(0, 4)
-    .map((item) => `<span class="destination-chip">${escapeHTML(item.name)}${item.address && item.address !== item.name ? ` · ${escapeHTML(item.address)}` : ""}</span>`)
+    .map((item) => `<span class="destination-chip">${escapeHTML(getAddressReal(item.address || item.name))}</span>`)
     .join("");
   const actions = isSelected
     ? `
@@ -3005,21 +3159,21 @@ function renderCaseCard(person) {
       </div>
       <div>
         <p class="subtext">個管員：${escapeHTML(person.careManager || "未填")} ${person.careManagerPhone ? renderPhoneLink(person.careManagerPhone) : ""}</p>
+        ${(person.serviceStartDate || person.serviceEndDate) ? `<p class="subtext" style="color: var(--brand-dark); font-weight: 600;">📅 ${escapeHTML(person.serviceStartDate ? `開服：${person.serviceStartDate}` : "")}${person.serviceStartDate && person.serviceEndDate ? " · " : ""}${escapeHTML(person.serviceEndDate ? `結案：${person.serviceEndDate}` : "")}</p>` : ""}
         <p class="subtext">服務區域：${escapeHTML(person.serviceArea || "未填")} · 福利身分：${escapeHTML(person.welfareStatus || "未填")} · 輔具：${escapeHTML(person.assistiveDevice || "未填")}</p>
         <div class="contact-block">
           <span class="subtext">緊急聯絡</span>
           <ul>${contactList}</ul>
         </div>
         <p class="subtext case-address-line">
-          <span>上車：${escapeHTML(person.pickupAddress)}</span>
+          <span>上車：<strong>${escapeHTML(getAddressAlias(person.pickupAddress, person))}</strong><span style="font-size: 12px; color: var(--muted); margin-left: 6px;">${escapeHTML(getAddressReal(person.pickupAddress))}</span></span>
         </p>
         <p class="subtext case-address-line">
-          <span>目的地：${escapeHTML(person.destinationAddress)}</span>
+          <span>目的地：<strong>${escapeHTML(getAddressAlias(person.destinationAddress, person))}</strong><span style="font-size: 12px; color: var(--muted); margin-left: 6px;">${escapeHTML(getAddressReal(person.destinationAddress))}</span></span>
           <a class="inline-map-btn" href="${escapeHTML(routeUrl)}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(person.name)} 接送路徑">
             <span class="material-symbols-outlined" aria-hidden="true">map</span>
           </a>
         </p>
-        ${destinationList ? `<div class="destination-list">${destinationList}</div>` : ""}
         <p class="subtext">行動：${escapeHTML(person.mobility)}</p>
         <p class="subtext">接送注意：${escapeHTML(person.rideNote || person.note || "無")}</p>
       </div>
@@ -3060,6 +3214,8 @@ function fillCaseForm(caseId) {
   form.elements.destinationsText.value = destinationsToText(person.destinations || []);
   form.elements.tripDestination.value = "";
   form.elements.rideNote.value = person.rideNote || "";
+  form.elements.serviceStartDate.value = person.serviceStartDate || "";
+  form.elements.serviceEndDate.value = person.serviceEndDate || "";
   form.elements.note.value = person.note || "";
   form.elements.createTrip.checked = false;
   form.elements.createTrip.disabled = true;
@@ -3119,6 +3275,8 @@ async function handleCaseSubmit(event) {
     destinations,
     rideNote: String(form.get("rideNote")).trim(),
     note: String(form.get("note")).trim(),
+    serviceStartDate: String(form.get("serviceStartDate") || "").trim(),
+    serviceEndDate: String(form.get("serviceEndDate") || "").trim(),
     active: existingCase?.active ?? true,
   };
 
@@ -3812,11 +3970,13 @@ function renderDriverTask(trip) {
         <div class="address-grid">
           <div class="address-box">
             <span>上車地址</span>
-            ${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}
+            <strong>${escapeHTML(getAddressAlias(trip.pickupAddress || person?.pickupAddress || "", person))}</strong>
+            <span style="font-size: 12px; color: var(--muted); display: block; margin-top: 4px;">${escapeHTML(getAddressReal(trip.pickupAddress || person?.pickupAddress || ""))}</span>
           </div>
           <div class="address-box">
             <span>目的地</span>
-            ${escapeHTML(trip.destinationAddress || person?.destinationAddress || "")}
+            <strong>${escapeHTML(getAddressAlias(trip.destinationAddress || person?.destinationAddress || "", person))}</strong>
+            <span style="font-size: 12px; color: var(--muted); display: block; margin-top: 4px;">${escapeHTML(getAddressReal(trip.destinationAddress || person?.destinationAddress || ""))}</span>
           </div>
         </div>
         <p class="subtext">${escapeHTML(person?.mobility ?? "")} · ${escapeHTML(person?.note ?? "")}</p>
@@ -4155,16 +4315,16 @@ function showTripDetails(tripId) {
             <span style="color: var(--brand); font-size: 16px; margin-top: 2px;">●</span>
             <div>
               <strong style="color: var(--muted); font-size: 12px; display: block;">起點上車地址</strong>
-              <span>${escapeHTML(pickup)}</span>
-              <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pickup)}" target="_blank" style="margin-left: 8px; color: var(--brand); font-size: 12px; text-decoration: underline;">地圖檢視</a>
+              <span><strong>${escapeHTML(getAddressAlias(pickup, person))}</strong><span style="color: var(--muted); font-size: 13px; margin-left: 6px;">${escapeHTML(getAddressReal(pickup))}</span></span>
+              <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getAddressReal(pickup))}" target="_blank" style="margin-left: 8px; color: var(--brand); font-size: 12px; text-decoration: underline;">地圖檢視</a>
             </div>
           </div>
           <div style="display: flex; gap: 8px; align-items: flex-start;">
             <span style="color: var(--amber); font-size: 16px; margin-top: 2px;">▼</span>
             <div>
               <strong style="color: var(--muted); font-size: 12px; display: block;">終點送達目的地</strong>
-              <span>${escapeHTML(destination)}</span>
-              <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}" target="_blank" style="margin-left: 8px; color: var(--brand); font-size: 12px; text-decoration: underline;">地圖檢視</a>
+              <span><strong>${escapeHTML(getAddressAlias(destination, person))}</strong><span style="color: var(--muted); font-size: 13px; margin-left: 6px;">${escapeHTML(getAddressReal(destination))}</span></span>
+              <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getAddressReal(destination))}" target="_blank" style="margin-left: 8px; color: var(--brand); font-size: 12px; text-decoration: underline;">地圖檢視</a>
             </div>
           </div>
         </div>
@@ -4418,7 +4578,8 @@ function parseAndPreviewCsv(text) {
 
     const weekdaysStr = item.daysOfWeek.map(d => ["日", "一", "二", "三", "四", "五", "六"][d]).join(",");
     const timeStr = `${item.scheduledPickup} ~ ${item.scheduledDropoff}`;
-    const typeStr = item.scheduleType === "single" ? `單次 (${item.serviceDate})` : `每週 (${weekdaysStr}) 自 ${item.startDate}`;
+    const endPart = item.endDate ? ` 至 ${item.endDate}` : " (持續無特定結束日)";
+    const typeStr = item.scheduleType === "single" ? `單次 (${item.serviceDate})` : `每週 (${weekdaysStr}) 自 ${item.startDate}${endPart}`;
     
     const returnHtml = item.hasReturnTrip
       ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.06); color: #047857;">
@@ -4434,7 +4595,7 @@ function parseAndPreviewCsv(text) {
         </div>
         <div style="font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4;">
           類型：${typeStr} · 時間：${timeStr}<br>
-          起點：${escapeHTML(item.pickupAddress)} ➔ 終點：${escapeHTML(item.destinationAddress)}
+          起點：<strong>${escapeHTML(getAddressAlias(item.pickupAddress, item.caseId))}</strong><span style="font-size: 11px; color: var(--muted); margin-left: 4px;">(${escapeHTML(getAddressReal(item.pickupAddress))})</span> ➔ 終點：<strong>${escapeHTML(getAddressAlias(item.destinationAddress, item.caseId))}</strong><span style="font-size: 11px; color: var(--muted); margin-left: 4px;">(${escapeHTML(getAddressReal(item.destinationAddress))})</span>
         </div>
         ${returnHtml}
         ${errorsHtml}

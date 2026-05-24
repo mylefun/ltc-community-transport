@@ -219,11 +219,11 @@
               <form class="case-form" id="caseForm">
             <input type="hidden" name="id" />
             <label>
-              個案姓名
+              <span>個案姓名 <span style="color: var(--red); font-weight: bold;">*</span></span>
               <input required name="name" autocomplete="name" />
             </label>
             <label>
-              個案編號
+              <span>個案編號 <span style="color: var(--red); font-weight: bold;">*</span></span>
               <input required name="caseNo" placeholder="LTC-006" />
             </label>
             <label>
@@ -248,7 +248,7 @@
               <input name="welfareStatus" placeholder="第三類(一般戶)" />
             </label>
             <label>
-              主要電話
+              <span>主要電話 <span style="color: var(--red); font-weight: bold;">*</span></span>
               <input required name="phone" inputmode="tel" />
             </label>
             <label>
@@ -303,6 +303,14 @@
               <input name="serviceArea" placeholder="中正區、萬華區" />
             </label>
             <label>
+              開始服務日期
+              <input name="serviceStartDate" type="date" />
+            </label>
+            <label>
+              結案日期
+              <input name="serviceEndDate" type="date" />
+            </label>
+            <label>
               個管員
               <input name="careManager" />
             </label>
@@ -311,11 +319,11 @@
               <input name="careManagerPhone" inputmode="tel" />
             </label>
             <label class="full">
-              上車地址
+              <span>上車地址 <span style="color: var(--red); font-weight: bold;">*</span></span>
               <input required name="pickupAddress" />
             </label>
             <label class="full">
-              目的地
+              <span>目的地 <span style="color: var(--red); font-weight: bold;">*</span></span>
               <input required name="destinationAddress" />
             </label>
             <label>
@@ -362,7 +370,7 @@
             </label>
             <label class="check-row full" id="createReturnTripRow">
               <input name="createReturnTrip" id="createReturnTripCheckbox" type="checkbox" />
-              <span>同步加入今日回程班表（回回程目的地，即個案上車地址）</span>
+              <span style="color: var(--red); font-weight: 800;">同步加入今日回程班表（回回程目的地，即個案上車地址）</span>
             </label>
             <div class="inline-fields full" id="caseReturnFields" style="display: none; border-top: 1px dashed rgba(0, 0, 0, 0.1); padding-top: 10px; margin-top: 5px;">
               <label>
@@ -544,17 +552,17 @@
             <div class="modal-body">
               <form class="case-form" id="scheduleForm">
                 <input type="hidden" name="id" />
-                <label>
-                  個案
+                 <label>
+                  <span>個案 <span style="color: var(--red); font-weight: bold;">*</span></span>
                   <select name="caseId" id="scheduleCaseSelect"></select>
                 </label>
                 <label>
-                  指派司機
+                  <span>指派司機 <span style="color: var(--red); font-weight: bold;">*</span></span>
                   <select name="driverId" id="scheduleDriverSelect"></select>
                 </label>
                 <label>
                   排程類型
-                  <select name="scheduleType" id="scheduleTypeSelect">
+                  <select name="scheduleType" id="scheduleTypeSelect" disabled>
                     <option value="single">單次</option>
                     <option value="weekly">週期</option>
                   </select>
@@ -572,7 +580,7 @@
                   <input name="endDate" type="date" />
                 </label>
                 <fieldset class="weekday-fieldset full">
-                  <legend>每週星期</legend>
+                  <legend>每週星期 <span style="color: var(--red); font-weight: bold;">*</span></legend>
                   <div class="weekday-grid">
                     <label><input type="checkbox" name="daysOfWeek" value="0" /> 日</label>
                     <label><input type="checkbox" name="daysOfWeek" value="1" /> 一</label>
@@ -584,19 +592,19 @@
                   </div>
                 </fieldset>
                 <label>
-                  預定上車
+                  <span>預定上車 <span style="color: var(--red); font-weight: bold;">*</span></span>
                   <input name="scheduledPickup" type="time" value="07:00" />
                 </label>
                 <label>
-                  預定送達
+                  <span>預定送達 <span style="color: var(--red); font-weight: bold;">*</span></span>
                   <input name="scheduledDropoff" type="time" value="07:30" />
                 </label>
                 <label class="full">
-                  上車地址
+                  <span>上車地址 <span style="color: var(--red); font-weight: bold;">*</span></span>
                   <input name="pickupAddress" />
                 </label>
                 <label class="full">
-                  目的地
+                  <span>目的地 <span style="color: var(--red); font-weight: bold;">*</span></span>
                   <input name="destinationAddress" />
                 </label>
                 <label class="full">
@@ -605,7 +613,7 @@
                 </label>
                 <label class="check-row full" id="enableReturnTripRow">
                   <input name="hasReturnTrip" id="hasReturnTripCheckbox" type="checkbox" />
-                  <span>啟用回程接送（去目的地接回，即起訖點對調）</span>
+                  <span style="color: var(--red); font-weight: 800;">啟用回程接送（去目的地接回，即起訖點對調）</span>
                 </label>
                 <div class="inline-fields full" id="scheduleReturnFields" style="display: none; border-top: 1px dashed rgba(0, 0, 0, 0.1); padding-top: 10px; margin-top: 5px;">
                   <label>
