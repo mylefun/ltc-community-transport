@@ -841,18 +841,41 @@ async function findDuplicateDriver(driver, editingId = "") {
 }
 
 async function writeCase(method, path, person) {
+  const payload = casePayload(person);
   try {
     return await supabase(path, {
       method,
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify(casePayload(person)),
+      body: JSON.stringify(payload),
     });
   } catch (error) {
     if (!isMissingColumnError(error)) throw error;
-    return supabase(path, {
+
+    const missingColumn = getMissingColumnName(error);
+    if (missingColumn && payload[missingColumn] !== undefined) {
+      delete payload[missingColumn];
+      try {
+        return await supabase(path, {
+          method,
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(payload),
+        });
+      } catch (retryError) {
+        if (!isMissingColumnError(retryError)) throw retryError;
+      }
+    }
+
+    const fallbackPayload = casePayload(person, false);
+    if (missingColumn && fallbackPayload[missingColumn] !== undefined) {
+      delete fallbackPayload[missingColumn];
+    }
+    delete fallbackPayload.service_start_date;
+    delete fallbackPayload.service_end_date;
+
+    return await supabase(path, {
       method,
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify(casePayload(person, false)),
+      body: JSON.stringify(fallbackPayload),
     });
   }
 }
@@ -860,6 +883,15 @@ async function writeCase(method, path, person) {
 function isMissingColumnError(error) {
   const message = String(error?.message || "");
   return /PGRST204|schema cache|column .* does not exist|Could not find.*column/i.test(message);
+}
+
+function getMissingColumnName(error) {
+  const message = String(error?.message || "");
+  let match = message.match(/Could not find the '([^']+)' column/i);
+  if (match) return match[1];
+  match = message.match(/column ["']([^"']+)["']/i);
+  if (match) return match[1];
+  return null;
 }
 
 function casePayload(person, includeExtended = true) {

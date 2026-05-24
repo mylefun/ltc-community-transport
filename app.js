@@ -196,6 +196,66 @@ let caseFormOpen = false;
 let editingDriverId = "";
 let selectedDriverId = "";
 let driverFormOpen = false;
+
+let selectedCaseTimeout = null;
+function startSelectedCaseTimeout() {
+  if (selectedCaseTimeout) {
+    clearTimeout(selectedCaseTimeout);
+    selectedCaseTimeout = null;
+  }
+  if (selectedCaseId) {
+    selectedCaseTimeout = setTimeout(() => {
+      selectedCaseId = "";
+      refreshCases();
+    }, 5000);
+  }
+}
+function clearSelectedCaseTimeout() {
+  if (selectedCaseTimeout) {
+    clearTimeout(selectedCaseTimeout);
+    selectedCaseTimeout = null;
+  }
+}
+
+let selectedDriverTimeout = null;
+function startSelectedDriverTimeout() {
+  if (selectedDriverTimeout) {
+    clearTimeout(selectedDriverTimeout);
+    selectedDriverTimeout = null;
+  }
+  if (selectedDriverId) {
+    selectedDriverTimeout = setTimeout(() => {
+      selectedDriverId = "";
+      refreshDrivers();
+    }, 5000);
+  }
+}
+function clearSelectedDriverTimeout() {
+  if (selectedDriverTimeout) {
+    clearTimeout(selectedDriverTimeout);
+    selectedDriverTimeout = null;
+  }
+}
+
+let selectedScheduleTimeout = null;
+function startSelectedScheduleTimeout() {
+  if (selectedScheduleTimeout) {
+    clearTimeout(selectedScheduleTimeout);
+    selectedScheduleTimeout = null;
+  }
+  if (selectedScheduleId) {
+    selectedScheduleTimeout = setTimeout(() => {
+      selectedScheduleId = "";
+      refreshSchedulesView();
+    }, 5000);
+  }
+}
+function clearSelectedScheduleTimeout() {
+  if (selectedScheduleTimeout) {
+    clearTimeout(selectedScheduleTimeout);
+    selectedScheduleTimeout = null;
+  }
+}
 let editingScheduleId = "";
 let selectedScheduleId = "";
 let scheduleFormOpen = false;
@@ -1462,6 +1522,9 @@ function applyFontScale() {
 }
 
 function requestView(view) {
+  clearSelectedCaseTimeout();
+  clearSelectedDriverTimeout();
+  clearSelectedScheduleTimeout();
   activeView = view;
   if (protectedViews.has(view) && !coordinatorUnlocked) {
     pendingProtectedView = view;
@@ -1665,6 +1728,14 @@ function scheduleCard(schedule) {
   const selected = schedule.id === selectedScheduleId;
   const overrideCount = (schedule.dateOverrides || []).length;
   const statusClass = schedule.status === "paused" ? "waiting" : schedule.status === "stopped" ? "alert" : "done";
+
+  const pickupAddr = schedule.pickupAddress || caseItem?.pickupAddress || "";
+  const destAddr = schedule.destinationAddress || caseItem?.destinationAddress || caseItem?.pickupAddress || "";
+  const routeParams = new URLSearchParams({ api: "1", travelmode: "driving" });
+  if (pickupAddr) routeParams.set("origin", getAddressReal(pickupAddr));
+  routeParams.set("destination", getAddressReal(destAddr || pickupAddr));
+  const routeUrl = `https://www.google.com/maps/dir/?${routeParams.toString()}`;
+
   const actions = selected
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(caseItem?.name || "排程")} 操作選項">
@@ -1699,7 +1770,11 @@ function scheduleCard(schedule) {
         <p class="subtext">上車 ${escapeHTML(schedule.scheduledPickup)} · 送達 ${escapeHTML(schedule.scheduledDropoff)}</p>
       </div>
       <div>
-        <p class="subtext">目的地：<strong>${escapeHTML(getAddressAlias(schedule.destinationAddress || "", caseItem))}</strong></p>
+        <p class="subtext case-address-line">目的地：<strong>${escapeHTML(getAddressAlias(schedule.destinationAddress || "", caseItem))}</strong>
+          <a class="inline-map-btn" href="${escapeHTML(routeUrl)}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(caseItem?.name || "排程")} 接送路徑">
+            <span class="material-symbols-outlined" aria-hidden="true">map</span>
+          </a>
+        </p>
         <p class="subtext">服務項目：${escapeHTML(schedule.purpose || "未填")}</p>
         <p class="subtext">特殊需求：${escapeHTML(schedule.specialRequirements || "無")}</p>
         <p class="subtext">例外變更：${overrideCount} 筆</p>
@@ -1708,6 +1783,7 @@ function scheduleCard(schedule) {
     </article>
   `;
 }
+
 
 function updateScheduleFormMode() {
   const form = document.getElementById("scheduleForm");
@@ -1820,6 +1896,7 @@ function renderScheduleManager() {
   }
   if (selectedScheduleId && !state.schedules.some((item) => item.id === selectedScheduleId)) {
     selectedScheduleId = "";
+    clearSelectedScheduleTimeout();
   }
 
   document.getElementById("scheduleCount").textContent = `${state.schedules.length} 筆排程`;
@@ -1904,6 +1981,7 @@ function renderScheduleManager() {
     editingScheduleId = "";
     scheduleFormOpen = true;
     selectedScheduleId = "";
+    clearSelectedScheduleTimeout();
     refreshSchedulesView();
   });
 
@@ -2265,9 +2343,11 @@ async function handleScheduleAction(event) {
     scheduleFormOpen = false;
     scheduleOverrideOpen = false;
     refreshSchedulesView();
+    startSelectedScheduleTimeout();
     return;
   }
 
+  clearSelectedScheduleTimeout();
   const schedule = state.schedules.find((item) => item.id === button.dataset.scheduleId);
   if (!schedule) return;
   selectedScheduleId = schedule.id;
@@ -3007,6 +3087,7 @@ function renderCases(host = document.getElementById("appView")) {
 
   if (selectedCaseId && !state.cases.some((person) => person.id === selectedCaseId)) {
     selectedCaseId = "";
+    clearSelectedCaseTimeout();
   }
 
   const formPanel = document.getElementById("caseFormPanel");
@@ -3055,6 +3136,7 @@ function renderCases(host = document.getElementById("appView")) {
   document.getElementById("openCaseFormBtn").addEventListener("click", () => {
     editingCaseId = "";
     selectedCaseId = "";
+    clearSelectedCaseTimeout();
     caseFormOpen = true;
     refreshCases();
   });
@@ -3401,9 +3483,11 @@ async function handleCaseAction(event) {
     editingCaseId = "";
     caseFormOpen = false;
     refreshCases();
+    startSelectedCaseTimeout();
     return;
   }
 
+  clearSelectedCaseTimeout();
   const person = state.cases.find((item) => item.id === button.dataset.caseId);
   if (!person) return;
   selectedCaseId = person.id;
@@ -3509,6 +3593,7 @@ function renderDrivers(host = document.getElementById("appView")) {
 
   if (selectedDriverId && !state.drivers.some((driver) => driver.id === selectedDriverId)) {
     selectedDriverId = "";
+    clearSelectedDriverTimeout();
   }
 
   const formPanel = document.getElementById("driverFormPanel");
@@ -3522,6 +3607,7 @@ function renderDrivers(host = document.getElementById("appView")) {
   document.getElementById("openDriverFormBtn").addEventListener("click", () => {
     editingDriverId = "";
     selectedDriverId = "";
+    clearSelectedDriverTimeout();
     driverFormOpen = true;
     refreshDrivers();
   });
@@ -3742,9 +3828,11 @@ async function handleDriverManageAction(event) {
     editingDriverId = "";
     driverFormOpen = false;
     refreshDrivers();
+    startSelectedDriverTimeout();
     return;
   }
 
+  clearSelectedDriverTimeout();
   const driver = state.drivers.find((item) => item.id === button.dataset.driverId);
   if (!driver) return;
   selectedDriverId = driver.id;
