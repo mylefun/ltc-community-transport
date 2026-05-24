@@ -29,6 +29,7 @@ const coordinatorActions = new Set([
   "toggle_schedule",
   "create_schedule_override",
   "delete_schedule_override",
+  "import_schedules",
 ]);
 
 const statusLabels = {
@@ -207,8 +208,10 @@ let flashTone = "success";
 let flashScope = "global";
 
 let state = normalizeState(loadState());
+state.serviceDate = todayKey();
 state = normalizeState(state);
 saveState();
+
 
 function todayKey(date = new Date()) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -1032,6 +1035,7 @@ function getDriver(driverId) {
 
 function isTripLate(trip) {
   if (trip.pickupTime || trip.status === "completed") return false;
+  if (trip.serviceDate < todayKey()) return true;
   const [hours, minutes] = trip.scheduledPickup.split(":").map(Number);
   const scheduled = new Date();
   scheduled.setHours(hours, minutes, 0, 0);
@@ -1043,6 +1047,14 @@ function getTripStatus(trip) {
   if (trip.pickupTime) return "picked_up";
   if (isTripLate(trip)) return "late";
   return "scheduled";
+}
+
+function getTripStatusLabel(trip) {
+  const status = getTripStatus(trip);
+  if (status === "late" && trip.serviceDate < todayKey()) {
+    return "異常";
+  }
+  return statusLabels[status] || status;
 }
 
 function todayTrips() {
@@ -1064,11 +1076,58 @@ function render() {
   applyFontScale();
   applySidebarState();
   document.body.classList.toggle("coordinator-unlocked", coordinatorUnlocked);
+  // Dynamic navigation list rendering
+  const navList = document.querySelector(".nav-list");
+  if (navList) {
+    if (coordinatorUnlocked && activeView !== "home") {
+      navList.innerHTML = `
+        <button class="nav-item" data-view="dashboard" aria-label="即時動態">
+          <span class="material-symbols-outlined" aria-hidden="true">dashboard</span>
+          <b>即時動態</b>
+        </button>
+        <button class="nav-item" data-view="cases" aria-label="個案">
+          <span class="material-symbols-outlined" aria-hidden="true">accessible_forward</span>
+          <b>個案</b>
+        </button>
+        <button class="nav-item" data-view="drivers" aria-label="司機">
+          <span class="material-symbols-outlined" aria-hidden="true">airport_shuttle</span>
+          <b>司機</b>
+        </button>
+        <button class="nav-item" data-view="schedules" aria-label="排班">
+          <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
+          <b>排班</b>
+        </button>
+        <button class="nav-item" data-view="reimbursements" aria-label="核銷">
+          <span class="material-symbols-outlined" aria-hidden="true">payments</span>
+          <b>核銷</b>
+        </button>
+      `;
+    } else {
+      navList.innerHTML = `
+        <button class="nav-item" data-view="home" aria-label="主入口">
+          <span class="material-symbols-outlined" aria-hidden="true">home</span>
+          <b>主入口</b>
+        </button>
+        <button class="nav-item" data-view="dashboard" aria-label="承辦人入口">
+          <span class="material-symbols-outlined" aria-hidden="true">dashboard</span>
+          <b>承辦人入口</b>
+        </button>
+        <button class="nav-item" data-view="driver" aria-label="司機入口">
+          <span class="material-symbols-outlined" aria-hidden="true">route</span>
+          <b>司機入口</b>
+        </button>
+      `;
+    }
+    // Re-bind click event listeners to the dynamically generated navigation items
+    navList.querySelectorAll(".nav-item").forEach((button) => {
+      button.addEventListener("click", () => {
+        requestView(button.dataset.view);
+      });
+    });
+  }
+
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === activeView);
-  });
-  document.querySelectorAll(".topbar-management-btn").forEach((button) => {
-    button.classList.toggle("active", button.dataset.topbarView === activeView);
   });
   const visibleView = protectedViews.has(activeView) && !coordinatorUnlocked ? "coordinatorGate" : activeView;
   document.body.dataset.view = visibleView;
@@ -1213,6 +1272,12 @@ function updateNotificationCenter() {
   badge.textContent = unreadCount;
   badge.hidden = unreadCount === 0;
 
+  const menuBadge = document.getElementById("topbarMenuBadge");
+  if (menuBadge) {
+    menuBadge.textContent = unreadCount;
+    menuBadge.hidden = unreadCount === 0;
+  }
+
   if (notifications.length === 0) {
     list.innerHTML = '<div class="empty-state">尚無系統通知紀錄。</div>';
     return;
@@ -1344,7 +1409,6 @@ function logoutCoordinator() {
   sessionStorage.removeItem(COORDINATOR_SESSION_KEY);
   sessionStorage.removeItem(COORDINATOR_PASSCODE_KEY);
   activeView = "home";
-  addNotification("承辦人已登出", true);
   render();
 }
 
@@ -1761,6 +1825,48 @@ function renderScheduleManager() {
     selectedScheduleId = "";
     refreshSchedulesView();
   });
+
+  const importScheduleBtn = document.getElementById("importScheduleBtn");
+  if (importScheduleBtn) {
+    importScheduleBtn.addEventListener("click", () => {
+      document.getElementById("csvImportPanel").hidden = false;
+      document.getElementById("importPreviewContainer").style.display = "none";
+      document.getElementById("csvFileInput").value = "";
+    });
+  }
+
+  const csvImportCloseBtn = document.getElementById("csvImportCloseBtn");
+  if (csvImportCloseBtn) {
+    csvImportCloseBtn.addEventListener("click", () => {
+      document.getElementById("csvImportPanel").hidden = true;
+    });
+  }
+
+  const downloadTemplateBtn = document.getElementById("downloadTemplateBtn");
+  if (downloadTemplateBtn) {
+    downloadTemplateBtn.addEventListener("click", downloadCSVScheduleTemplate);
+  }
+
+  const selectCsvFileBtn = document.getElementById("selectCsvFileBtn");
+  const csvFileInput = document.getElementById("csvFileInput");
+  if (selectCsvFileBtn && csvFileInput) {
+    selectCsvFileBtn.addEventListener("click", () => {
+      csvFileInput.click();
+    });
+    csvFileInput.addEventListener("change", handleCsvFileSelect);
+  }
+
+  const confirmImportBtn = document.getElementById("confirmImportBtn");
+  if (confirmImportBtn) {
+    confirmImportBtn.addEventListener("click", handleConfirmImport);
+  }
+
+  const cancelImportBtn = document.getElementById("cancelImportBtn");
+  if (cancelImportBtn) {
+    cancelImportBtn.addEventListener("click", () => {
+      document.getElementById("csvImportPanel").hidden = true;
+    });
+  }
 
   document.getElementById("scheduleForm").addEventListener("submit", handleScheduleSubmit);
   document.getElementById("scheduleCancelBtn").addEventListener("click", () => {
@@ -2680,7 +2786,7 @@ function renderRideRow(trip) {
       <!-- Column 1: Time & Status -->
       <div class="ride-time-status">
         <strong class="time-val" style="font-family: monospace;">${escapeHTML(trip.scheduledPickup)} ~ ${escapeHTML(trip.scheduledDropoff)}</strong>
-        <span class="status-pill ${escapeHTML(status)}">${escapeHTML(statusLabels[status])}</span>
+        <span class="status-pill ${escapeHTML(status)}">${escapeHTML(getTripStatusLabel(trip))}</span>
       </div>
 
       <!-- Column 2: Case Details -->
@@ -2691,23 +2797,7 @@ function renderRideRow(trip) {
         </div>
       </div>
 
-      <!-- Column 3: Route -->
-      <div class="ride-route simplified">
-        <span class="route-dot-icon" style="color: var(--brand);">●</span>
-        <span class="route-address" title="${escapeHTML(trip.pickupAddress || person?.pickupAddress || "")}">
-          ${escapeHTML(simplifyAddress(trip.pickupAddress || person?.pickupAddress || ""))}
-        </span>
-        <span style="color: var(--muted); margin: 0 4px; font-weight: bold; flex-shrink: 0;">➔</span>
-        <span class="route-dot-icon" style="color: var(--amber);">▼</span>
-        <span class="route-address" title="${escapeHTML(destination)}">
-          ${escapeHTML(simplifyAddress(destination))}
-        </span>
-        <a class="route-icon-btn google-maps-link" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 Google 地圖路徑" title="開啟 Google 地圖路徑" style="margin-left: auto; flex-shrink: 0;">
-          <span class="material-symbols-outlined" style="font-size: 20px;" aria-hidden="true">map</span>
-        </a>
-      </div>
-
-      <!-- Column 4: Driver & Tracking -->
+      <!-- Column 3: Driver & Tracking -->
       <div class="ride-dispatch">
         <div class="driver-assign-row">
           <label>
@@ -2715,6 +2805,13 @@ function renderRideRow(trip) {
             <select class="driver-select" data-trip-id="${escapeHTML(trip.id)}">${options}</select>
           </label>
         </div>
+      </div>
+
+      <!-- Column 4: Route -->
+      <div class="ride-route simplified" style="justify-content: center;">
+        <a class="route-icon-btn google-maps-link" href="${escapeHTML(googleMapsRouteUrl(trip))}" target="_blank" rel="noopener" aria-label="開啟 Google 地圖路徑" title="開啟 Google 地圖路徑" style="flex-shrink: 0; margin: 0 auto;">
+          <span class="material-symbols-outlined" style="font-size: 20px;" aria-hidden="true">map</span>
+        </a>
       </div>
     </article>
   `;
@@ -2878,29 +2975,23 @@ function renderCaseCard(person) {
   const actions = isSelected
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(person.name)} 操作選項">
-        <button class="primary-btn" type="button" data-action="edit" data-case-id="${escapeHTML(person.id)}">
+        <button class="primary-btn" type="button" data-action="edit" data-case-id="${escapeHTML(person.id)}" title="編輯個案" aria-label="編輯個案">
           <span class="material-symbols-outlined" aria-hidden="true">edit</span>
-          編輯
         </button>
-        <button class="secondary-btn" type="button" data-action="schedule-manage" data-case-id="${escapeHTML(person.id)}">
+        <button class="secondary-btn" type="button" data-action="schedule-manage" data-case-id="${escapeHTML(person.id)}" title="排班設定" aria-label="排班設定">
           <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
-          排班設定
         </button>
-        <button class="ghost-btn" type="button" data-action="toggle" data-case-id="${escapeHTML(person.id)}">
+        <button class="ghost-btn" type="button" data-action="toggle" data-case-id="${escapeHTML(person.id)}" title="${person.active ? "停用個案" : "恢復服務"}" aria-label="${person.active ? "停用個案" : "恢復服務"}">
           <span class="material-symbols-outlined" aria-hidden="true">${person.active ? "pause" : "play_arrow"}</span>
-          ${person.active ? "停用個案" : "恢復服務"}
         </button>
-        <button class="danger-btn" type="button" data-action="delete" data-case-id="${escapeHTML(person.id)}">
+        <button class="danger-btn" type="button" data-action="delete" data-case-id="${escapeHTML(person.id)}" title="刪除個案" aria-label="刪除個案">
           <span class="material-symbols-outlined" aria-hidden="true">delete</span>
-          刪除
         </button>
       </div>
     `
-    : `
-      <div class="case-card-hint">
-        點選個案顯示操作
-      </div>
-    `;
+    : ``;
+
+
 
   return `
     <article class="case-card ${isSelected ? "selected" : ""}" data-case-id="${escapeHTML(person.id)}" tabindex="0">
@@ -3361,25 +3452,19 @@ function renderDriverManageCard(driver) {
   const actions = isSelected
     ? `
       <div class="task-actions case-actions-panel" aria-label="${escapeHTML(driver.name)} 操作選項">
-        <button class="primary-btn" type="button" data-action="edit" data-driver-id="${escapeHTML(driver.id)}">
+        <button class="primary-btn" type="button" data-action="edit" data-driver-id="${escapeHTML(driver.id)}" title="編輯司機" aria-label="編輯司機">
           <span class="material-symbols-outlined" aria-hidden="true">edit</span>
-          編輯
         </button>
-        <button class="ghost-btn" type="button" data-action="toggle" data-driver-id="${escapeHTML(driver.id)}">
+        <button class="ghost-btn" type="button" data-action="toggle" data-driver-id="${escapeHTML(driver.id)}" title="${driver.active ? "停用司機" : "恢復服務"}" aria-label="${driver.active ? "停用司機" : "恢復服務"}">
           <span class="material-symbols-outlined" aria-hidden="true">${driver.active ? "pause" : "play_arrow"}</span>
-          ${driver.active ? "停用司機" : "恢復服務"}
         </button>
-        <button class="danger-btn" type="button" data-action="delete" data-driver-id="${escapeHTML(driver.id)}">
+        <button class="danger-btn" type="button" data-action="delete" data-driver-id="${escapeHTML(driver.id)}" title="刪除司機" aria-label="刪除司機">
           <span class="material-symbols-outlined" aria-hidden="true">delete</span>
-          刪除
         </button>
       </div>
     `
-    : `
-      <div class="case-card-hint">
-        點選司機顯示操作
-      </div>
-    `;
+    : ``;
+
 
   return `
     <article class="case-card ${isSelected ? "selected" : ""}" data-driver-id="${escapeHTML(driver.id)}" tabindex="0">
@@ -3722,7 +3807,7 @@ function renderDriverTask(trip) {
             <p class="eyebrow">${escapeHTML(trip.scheduledPickup)} 上車 · ${escapeHTML(trip.scheduledDropoff)} 送達</p>
             <h4>${escapeHTML(person?.name ?? "未知個案")}</h4>
           </div>
-          <span class="status-pill ${escapeHTML(status)}">${escapeHTML(statusLabels[status])}</span>
+          <span class="status-pill ${escapeHTML(status)}">${escapeHTML(getTripStatusLabel(trip))}</span>
         </div>
         <div class="address-grid">
           <div class="address-box">
@@ -4039,7 +4124,7 @@ function showTripDetails(tripId) {
           <span style="font-size: 12px; color: var(--muted); display: block;">預定接送時間</span>
           <strong style="font-size: 20px; color: var(--brand-dark); font-family: monospace;">${escapeHTML(trip.scheduledPickup)} - ${escapeHTML(trip.scheduledDropoff)}</strong>
         </div>
-        <span class="status-pill ${escapeHTML(status)}" style="font-size: 14px; padding: 6px 12px;">${escapeHTML(statusLabels[status])}</span>
+        <span class="status-pill ${escapeHTML(status)}" style="font-size: 14px; padding: 6px 12px;">${escapeHTML(getTripStatusLabel(trip))}</span>
       </div>
 
       <!-- Case Info section -->
@@ -4115,6 +4200,341 @@ function showTripDetails(tripId) {
 
   panel.hidden = false;
 }
+// --- CSV Import Helper Functions ---
+let pendingImportSchedules = [];
+
+function parseCSV(text) {
+  const lines = [];
+  let row = [""];
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        row[row.length - 1] += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push('');
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      lines.push(row);
+      row = [''];
+    } else {
+      row[row.length - 1] += char;
+    }
+  }
+  if (row.length > 1 || row[0] !== '') {
+    lines.push(row);
+  }
+  return lines;
+}
+
+function downloadCSVScheduleTemplate() {
+  const CSV_HEADER = "個案姓名或編號,司機姓名或車號,排程類型(單次/週期),單次日期(YYYY-MM-DD),起始日期(YYYY-MM-DD),結束日期(YYYY-MM-DD),\"重複星期(日到六以半形逗號分隔，如：1,3,5)\",預定上車時間(HH:MM),預定送達時間(HH:MM),上車地址,目的地,服務項目,特殊需求,是否啟用回程(是/否),回程預定上車時間(HH:MM),回程預定送達時間(HH:MM),回程指派司機(姓名或車號),回程服務項目";
+  const CSV_ROW_1 = "林塗桂美,林文欽,週期,,2026-05-24,2026-06-24,\"1,3,5\",08:00,08:30,宜蘭縣壯圍鄉中央路2段265號,社照會長照中心,日照接送,輪椅,是,16:00,16:30,林文欽,回程接送";
+  const CSV_ROW_2 = "陳好,吳佳玲,單次,2026-05-25,,,,09:15,09:45,宜蘭市壯五路100號,陽明交通大學附設醫院,復健門診,陪同,否,,,,";
+  const csvContent = "\uFEFF" + [CSV_HEADER, CSV_ROW_1, CSV_ROW_2].join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", "接送排程匯入範本.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function findCaseByMatch(matchText) {
+  const query = String(matchText || "").trim().toLowerCase();
+  if (!query) return null;
+  return state.cases.find(c => 
+    c.name.toLowerCase() === query || 
+    c.caseNo.toLowerCase() === query ||
+    c.name.toLowerCase().includes(query) ||
+    c.caseNo.toLowerCase().includes(query)
+  );
+}
+
+function findDriverByMatch(matchText) {
+  const query = String(matchText || "").trim().toLowerCase();
+  if (!query) return null;
+  return state.drivers.find(d => 
+    d.name.toLowerCase() === query || 
+    d.vehicleNo.toLowerCase().replace("-", "").includes(query.replace("-", "")) ||
+    d.name.toLowerCase().includes(query)
+  );
+}
+
+function parseDaysOfWeek(value) {
+  if (!value) return [];
+  const parts = String(value).split(/[,，\s]+/);
+  const result = [];
+  const chnMap = { "日": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6 };
+  parts.forEach(p => {
+    const trimmed = p.trim();
+    if (chnMap[trimmed] !== undefined) {
+      result.push(chnMap[trimmed]);
+    }
+  });
+  return [...new Set(result)].sort((a, b) => a - b);
+}
+
+function parseDateString(value) {
+  if (!value) return "";
+  let clean = String(value).trim().replace(/\//g, "-");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  const parts = clean.split("-");
+  if (parts.length === 3) {
+    let y = parts[0];
+    let m = parts[1].padStart(2, "0");
+    let d = parts[2].padStart(2, "0");
+    if (y.length === 3) {
+      y = String(Number(y) + 1911);
+    }
+    if (y.length === 4) {
+      return `${y}-${m}-${d}`;
+    }
+  }
+  return "";
+}
+
+function parseTimeString(value) {
+  if (!value) return "08:00";
+  let clean = String(value).trim();
+  if (/^\d{2}:\d{2}$/.test(clean)) return clean;
+  const parts = clean.split(":");
+  if (parts.length >= 2) {
+    const h = parts[0].padStart(2, "0");
+    const m = parts[1].padStart(2, "0");
+    return `${h}:${m}`;
+  }
+  return "08:00";
+}
+
+function parseAndPreviewCsv(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) {
+    addNotification("CSV 檔案內容為空或格式不正確", false);
+    return;
+  }
+
+  // Filter out header and empty lines
+  const dataRows = rows.slice(1).filter(r => r.length > 0 && r.some(cell => cell.trim().length > 0));
+  
+  pendingImportSchedules = dataRows.map(row => {
+    const caseMatch = findCaseByMatch(row[0]);
+    const driverMatch = findDriverByMatch(row[1]);
+    const scheduleType = String(row[2] || "").trim().includes("週期") ? "weekly" : "single";
+    const serviceDate = scheduleType === "single" ? parseDateString(row[3]) : "";
+    const startDate = scheduleType === "weekly" ? parseDateString(row[4]) : "";
+    const endDate = scheduleType === "weekly" ? parseDateString(row[5]) : "";
+    const daysOfWeek = scheduleType === "weekly" ? parseDaysOfWeek(row[6]) : [];
+    const scheduledPickup = parseTimeString(row[7]);
+    const scheduledDropoff = parseTimeString(row[8]);
+    const pickupAddress = String(row[9] || "").trim() || (caseMatch ? caseMatch.pickupAddress : "");
+    const destinationAddress = String(row[10] || "").trim() || (caseMatch ? caseMatch.destinationAddress : "");
+    const purpose = String(row[11] || "").trim() || "日照接送";
+    const specialRequirements = String(row[12] || "").trim();
+
+    // Return trip columns
+    const hasReturnTrip = String(row[13] || "").trim() === "是";
+    const scheduledPickupReturn = hasReturnTrip ? parseTimeString(row[14]) : "";
+    const scheduledDropoffReturn = hasReturnTrip ? parseTimeString(row[15]) : "";
+    const driverMatchReturn = hasReturnTrip ? findDriverByMatch(row[16]) : null;
+    const purposeReturn = hasReturnTrip ? (String(row[17] || "").trim() || "回程接送") : "";
+
+    const errors = [];
+    if (!caseMatch) errors.push(`找不到匹配的個案「${row[0] || "空白"}」`);
+    if (!driverMatch) errors.push(`找不到匹配的司機「${row[1] || "空白"}」`);
+    if (scheduleType === "single" && !serviceDate) errors.push("單次排程缺少日期或格式錯誤");
+    if (scheduleType === "weekly" && !startDate) errors.push("週期排程缺少起始日期或格式錯誤");
+    if (scheduleType === "weekly" && daysOfWeek.length === 0) errors.push("週期排程缺少重複星期設定");
+    if (!pickupAddress) errors.push("缺少上車地址");
+    if (!destinationAddress) errors.push("缺少目的地");
+
+    // Validate return trip details if enabled
+    if (hasReturnTrip) {
+      if (!scheduledPickupReturn) errors.push("已啟用回程，但缺少回程預定上車時間");
+      if (!driverMatchReturn) errors.push(`已啟用回程，但找不到匹配的回程司機「${row[16] || "空白"}」`);
+    }
+
+    return {
+      caseId: caseMatch ? caseMatch.id : "",
+      caseName: caseMatch ? caseMatch.name : (row[0] || "未知個案"),
+      driverId: driverMatch ? driverMatch.id : "",
+      driverName: driverMatch ? driverMatch.name : (row[1] || "未知司機"),
+      scheduleType,
+      serviceDate,
+      startDate,
+      endDate,
+      daysOfWeek,
+      scheduledPickup,
+      scheduledDropoff,
+      pickupAddress,
+      destinationAddress,
+      purpose,
+      specialRequirements,
+      
+      // Return trip properties
+      hasReturnTrip,
+      scheduledPickupReturn,
+      scheduledDropoffReturn,
+      driverIdReturn: driverMatchReturn ? driverMatchReturn.id : "",
+      driverNameReturn: driverMatchReturn ? driverMatchReturn.name : (row[16] || ""),
+      purposeReturn,
+
+      errors
+    };
+  });
+
+  const previewList = document.getElementById("importPreviewList");
+  if (!previewList) return;
+
+  let validCount = 0;
+  let invalidCount = 0;
+
+  previewList.innerHTML = pendingImportSchedules.map((item, idx) => {
+    const hasErrors = item.errors.length > 0;
+    if (hasErrors) {
+      invalidCount++;
+    } else {
+      validCount++;
+    }
+    
+    const statusHtml = hasErrors 
+      ? `<span style="color: var(--red); font-weight: bold; font-size: 12px;">❌ 錯誤 (將忽略)</span>` 
+      : `<span style="color: var(--brand); font-weight: bold; font-size: 12px;">✅ 正常</span>`;
+      
+    const errorsHtml = hasErrors
+      ? `<div style="color: var(--red); font-size: 12px; margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--red);">${item.errors.map(e => `• ${e}`).join("<br>")}</div>`
+      : "";
+
+    const weekdaysStr = item.daysOfWeek.map(d => ["日", "一", "二", "三", "四", "五", "六"][d]).join(",");
+    const timeStr = `${item.scheduledPickup} ~ ${item.scheduledDropoff}`;
+    const typeStr = item.scheduleType === "single" ? `單次 (${item.serviceDate})` : `每週 (${weekdaysStr}) 自 ${item.startDate}`;
+    
+    const returnHtml = item.hasReturnTrip
+      ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.06); color: #047857;">
+          <strong>🔄 包含回程：</strong>時間：${item.scheduledPickupReturn} ~ ${item.scheduledDropoffReturn} · 司機：${escapeHTML(item.driverNameReturn)}
+         </div>`
+      : "";
+
+    return `
+      <div style="padding: 8px 10px; border-radius: 8px; border: 1px solid ${hasErrors ? 'var(--red-soft)' : 'rgba(0,90,90,0.12)'}; background: ${hasErrors ? '#fffbfa' : '#ffffff'};">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px;">
+          <strong style="font-size: 13px;">#${idx + 1} 個案：${escapeHTML(item.caseName)} ➔ 司機：${escapeHTML(item.driverName)}</strong>
+          ${statusHtml}
+        </div>
+        <div style="font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4;">
+          類型：${typeStr} · 時間：${timeStr}<br>
+          起點：${escapeHTML(item.pickupAddress)} ➔ 終點：${escapeHTML(item.destinationAddress)}
+        </div>
+        ${returnHtml}
+        ${errorsHtml}
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("importPreviewCount").textContent = pendingImportSchedules.length;
+  document.getElementById("importPreviewContainer").style.display = "flex";
+  
+  const confirmBtn = document.getElementById("confirmImportBtn");
+  if (confirmBtn) {
+    confirmBtn.disabled = validCount === 0;
+    confirmBtn.textContent = `確認匯入 (${validCount} 筆)`;
+  }
+}
+
+async function handleCsvFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    parseAndPreviewCsv(text);
+  };
+  reader.readAsText(file, "UTF-8");
+}
+
+async function handleConfirmImport() {
+  const validSchedules = [];
+  
+  pendingImportSchedules
+    .filter(item => item.errors.length === 0)
+    .forEach(item => {
+      // 1. Outbound schedule
+      validSchedules.push({
+        id: uid("sch"),
+        caseId: item.caseId,
+        driverId: item.driverId,
+        scheduleType: item.scheduleType,
+        serviceDate: item.serviceDate,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        daysOfWeek: item.daysOfWeek,
+        scheduledPickup: item.scheduledPickup,
+        scheduledDropoff: item.scheduledDropoff,
+        pickupAddress: item.pickupAddress,
+        destinationAddress: item.destinationAddress,
+        purpose: item.purpose,
+        specialRequirements: item.specialRequirements,
+        status: "active",
+        stopReason: "",
+        dateOverrides: [],
+      });
+
+      // 2. Return schedule
+      if (item.hasReturnTrip) {
+        validSchedules.push({
+          id: uid("sch"),
+          caseId: item.caseId,
+          driverId: item.driverIdReturn,
+          scheduleType: item.scheduleType,
+          serviceDate: item.serviceDate,
+          startDate: item.startDate,
+          endDate: item.endDate,
+          daysOfWeek: item.daysOfWeek,
+          scheduledPickup: item.scheduledPickupReturn,
+          scheduledDropoff: item.scheduledDropoffReturn,
+          pickupAddress: item.destinationAddress, // swapped
+          destinationAddress: item.pickupAddress,
+          purpose: item.purposeReturn,
+          specialRequirements: item.specialRequirements,
+          status: "active",
+          stopReason: "",
+          dateOverrides: [],
+        });
+      }
+    });
+
+  if (validSchedules.length === 0) return;
+
+  if (dataMode === "supabase") {
+    try {
+      await apiAction("import_schedules", { schedules: validSchedules });
+      addNotification(`成功匯入 ${validSchedules.length} 筆接送排程`, true);
+      document.getElementById("csvImportPanel").hidden = true;
+      refreshDashboardAfterScheduleChange();
+    } catch (error) {
+      addNotification(`匯入失敗：${error.message}`, false);
+    }
+    return;
+  }
+
+  state.schedules.push(...validSchedules);
+  saveState();
+  addNotification(`成功匯入 ${validSchedules.length} 筆接送排程`, true);
+  document.getElementById("csvImportPanel").hidden = true;
+  refreshDashboardAfterScheduleChange();
+}
 
 async function init() {
   document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("zh-TW", {
@@ -4154,6 +4574,20 @@ async function init() {
     detailPanel.addEventListener("click", (e) => {
       if (e.target === detailPanel) {
         detailPanel.hidden = true;
+      }
+    });
+  }
+
+  const menuToggleBtn = document.getElementById("topbarMenuToggleBtn");
+  const actionsWrapper = document.getElementById("topbarActionsWrapper");
+  if (menuToggleBtn && actionsWrapper) {
+    menuToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      actionsWrapper.classList.toggle("open");
+    });
+    document.addEventListener("click", (e) => {
+      if (!actionsWrapper.contains(e.target) && e.target !== menuToggleBtn) {
+        actionsWrapper.classList.remove("open");
       }
     });
   }

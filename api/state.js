@@ -17,6 +17,7 @@ const coordinatorActions = new Set([
   "toggle_schedule",
   "create_schedule_override",
   "delete_schedule_override",
+  "import_schedules",
 ]);
 
 function coordinatorPasscode() {
@@ -711,6 +712,37 @@ async function handleAction(action, payload = {}) {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     });
+  }
+
+  if (action === "import_schedules") {
+    const list = Array.isArray(payload.schedules) ? payload.schedules : [];
+    const bodies = list.map((schedule) => ({
+      id: schedule.id,
+      case_id: schedule.caseId,
+      driver_id: schedule.driverId,
+      schedule_type: schedule.scheduleType || "single",
+      service_date: schedule.serviceDate || null,
+      start_date: schedule.startDate || null,
+      end_date: schedule.endDate || null,
+      days_of_week: Array.isArray(schedule.daysOfWeek) ? schedule.daysOfWeek : [],
+      scheduled_pickup: schedule.scheduledPickup,
+      scheduled_dropoff: schedule.scheduledDropoff || null,
+      pickup_address: schedule.pickupAddress,
+      destination_address: schedule.destinationAddress,
+      purpose: schedule.purpose || null,
+      special_requirements: schedule.specialRequirements || null,
+      status: schedule.status || "active",
+      stop_reason: schedule.stopReason || null,
+      date_overrides: Array.isArray(schedule.dateOverrides) ? schedule.dateOverrides : [],
+    }));
+
+    if (bodies.length > 0) {
+      await supabase("schedules", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(bodies),
+      });
+    }
   }
 
   if (action === "create_schedule_override") {

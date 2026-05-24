@@ -705,7 +705,7 @@ body.coordinator-unlocked .topbar-nav-btn {
 .view-host {
   display: grid;
   gap: 24px;
-  max-width: 1500px;
+  max-width: 100%;
   width: 100%;
   padding: 30px;
 }
@@ -833,17 +833,15 @@ body.coordinator-unlocked .topbar-nav-btn {
 }
 
 .summary-grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
   min-width: 0;
   padding: 6px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   background: rgba(255, 255, 255, 0.66);
   border: 1px solid rgba(189, 201, 200, 0.46);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
-  scrollbar-width: none; /* Hide for Firefox */
   margin-bottom: 24px;
 }
 
@@ -881,12 +879,24 @@ body.coordinator-unlocked .topbar-nav-btn {
   font-size: 22px;
 }
 
-.summary-card .eyebrow,
+.summary-card .eyebrow {
+  margin: 0 0 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px !important;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .summary-card .subtext {
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px !important;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .summary-card::after {
@@ -903,7 +913,7 @@ body.coordinator-unlocked .topbar-nav-btn {
   display: inline-block;
   margin: 2px 6px 2px 0;
   color: #0b0f12;
-  font-size: 27px;
+  font-size: 30px !important;
   line-height: 1;
   vertical-align: middle;
 }
@@ -1375,7 +1385,7 @@ textarea {
 
 .ride-row {
   display: grid;
-  grid-template-columns: 240px 1fr 1.4fr 1.2fr;
+  grid-template-columns: 240px 1fr 1.6fr 80px;
   gap: 20px;
   align-items: center;
   padding: 16px 20px;
@@ -3156,3 +3166,221 @@ body[data-view="home"] .notification-container {
     grid-column: span 1;
   }
 }
+
+/* --- Mobile UX Layout Optimizations --- */
+
+/* Desktop defaults */
+.menu-toggle-btn {
+  display: none !important;
+}
+
+.topbar-actions-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Mobile responsive styles */
+@media (max-width: 860px) {
+  /* Dynamic 5-column bottom navigation bar */
+  body.coordinator-unlocked .sidebar .nav-list,
+  body.coordinator-unlocked.sidebar-collapsed .nav-list {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  /* Compact topbar: single elegant row instead of stacked */
+  .app-topbar {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    min-height: 64px !important;
+    padding: 14px 16px !important;
+  }
+
+  .topbar-brand {
+    order: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin: 0 !important;
+  }
+
+  .topbar-brand > .material-symbols-outlined {
+    font-size: 24px !important;
+  }
+
+  .topbar-brand strong {
+    font-size: 18px !important;
+  }
+
+  /* Hide horizontal scrolling management buttons, as they are now in the bottom bar */
+  .topbar-management {
+    display: none !important;
+  }
+
+  .topbar-actions {
+    order: 2 !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    padding-bottom: 0 !important;
+    border-bottom: none !important;
+    margin: 0 !important;
+  }
+
+  /* Make toggle widgets button visible */
+  .menu-toggle-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--brand-soft);
+    border: 1px solid rgba(0, 90, 90, 0.14);
+    color: var(--brand-dark);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+  }
+  .menu-toggle-btn span.material-symbols-outlined {
+    font-size: 20px;
+  }
+  .menu-toggle-btn:hover {
+    background: var(--brand);
+    color: white;
+    transform: translateY(-1px);
+  }
+  .menu-toggle-btn:hover span {
+    color: white;
+  }
+
+  /* Floating Popover Control Center Panel */
+  .topbar-actions-wrapper {
+    display: none; /* Hidden by default */
+  }
+
+  .topbar-actions-wrapper.open {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-around !important;
+    position: absolute !important;
+    top: 48px !important;
+    right: 0 !important;
+    background: rgba(250, 253, 255, 0.96) !important;
+    border: 1px solid rgba(189, 201, 200, 0.72) !important;
+    border-radius: 18px !important;
+    padding: 12px 14px !important;
+    gap: 12px !important;
+    min-width: 240px !important;
+    box-shadow: 0 16px 40px rgba(18, 34, 45, 0.15) !important;
+    backdrop-filter: blur(16px) !important;
+    z-index: 100 !important;
+    animation: popover-slide-down 0.18s ease-out;
+  }
+
+  @keyframes popover-slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Tweak top-right notification Bell dropdown inside the popover */
+  .topbar-actions-wrapper.open .notification-dropdown {
+    position: fixed !important;
+    top: 130px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}
+
+.case-actions-panel {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+@media (max-width: 900px) {
+  .case-actions-panel {
+    justify-content: flex-start !important;
+    margin-top: 10px;
+  }
+}
+
+.case-actions-panel button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  cursor: pointer !important;
+}
+
+.case-actions-panel button .material-symbols-outlined {
+  font-size: 20px !important;
+  margin: 0 !important;
+}
+
+.case-actions-panel button:hover {
+  transform: translateY(-2px) scale(1.05) !important;
+  box-shadow: 0 4px 12px rgba(18, 34, 45, 0.15) !important;
+}
+
+/* Specific button tone overrides for circular actions */
+.case-actions-panel .primary-btn {
+  background: var(--brand-soft) !important;
+  color: var(--brand-dark) !important;
+  border-color: rgba(0, 90, 90, 0.12) !important;
+}
+.case-actions-panel .primary-btn:hover {
+  background: var(--brand) !important;
+  color: white !important;
+}
+
+.case-actions-panel .secondary-btn {
+  background: rgba(16, 185, 129, 0.12) !important; /* soft green */
+  color: #059669 !important;
+  border-color: rgba(16, 185, 129, 0.18) !important;
+}
+.case-actions-panel .secondary-btn:hover {
+  background: #10b981 !important;
+  color: white !important;
+}
+
+.case-actions-panel .ghost-btn {
+  background: rgba(245, 158, 11, 0.12) !important; /* soft amber */
+  color: #d97706 !important;
+  border-color: rgba(245, 158, 11, 0.18) !important;
+}
+.case-actions-panel .ghost-btn:hover {
+  background: #f59e0b !important;
+  color: white !important;
+}
+
+.case-actions-panel .danger-btn {
+  background: rgba(239, 68, 68, 0.12) !important; /* soft red */
+  color: #dc2626 !important;
+  border-color: rgba(239, 68, 68, 0.18) !important;
+}
+.case-actions-panel .danger-btn:hover {
+  background: #ef4444 !important;
+  color: white !important;
+}
+

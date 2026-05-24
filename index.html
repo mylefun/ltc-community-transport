@@ -55,53 +55,44 @@
           <div class="topbar-brand">
             <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
             <strong>社區交通車調度中心</strong>
-            <div class="topbar-management" role="group" aria-label="承辦管理入口">
-              <button class="topbar-management-btn" type="button" data-topbar-view="cases">
-                <span class="material-symbols-outlined" aria-hidden="true">accessible_forward</span>
-                個案管理
-              </button>
-              <button class="topbar-management-btn" type="button" data-topbar-view="drivers">
-                <span class="material-symbols-outlined" aria-hidden="true">airport_shuttle</span>
-                司機管理
-              </button>
-              <button class="topbar-management-btn" type="button" data-topbar-view="schedules">
-                <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
-                排班管理
-              </button>
-              <button class="topbar-management-btn" type="button" data-topbar-view="reimbursements">
-                <span class="material-symbols-outlined" aria-hidden="true">payments</span>
-                核銷匯出
-              </button>
-            </div>
           </div>
           <div class="topbar-actions">
-            <div class="notification-container">
-              <button class="topbar-action-btn notification-bell-btn" id="notificationBellBtn" type="button" aria-label="系統通知">
-                <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
-                <span class="notification-badge" id="notificationBadge" hidden>0</span>
-              </button>
-              <div class="notification-dropdown" id="notificationDropdown" hidden>
-                <div class="notification-dropdown-header">
-                  <strong>系統通知</strong>
-                  <button class="clear-all-btn" id="clearAllNotificationsBtn" type="button">清除全部</button>
+            <!-- Mobile Menu Toggle Button -->
+            <button class="topbar-action-btn menu-toggle-btn" id="topbarMenuToggleBtn" type="button" aria-label="系統選單">
+              <span class="material-symbols-outlined" aria-hidden="true">widgets</span>
+              <span class="notification-badge" id="topbarMenuBadge" hidden>0</span>
+            </button>
+
+            <!-- Actions Wrapper (Dropdown Menu on Mobile) -->
+            <div class="topbar-actions-wrapper" id="topbarActionsWrapper">
+              <div class="notification-container">
+                <button class="topbar-action-btn notification-bell-btn" id="notificationBellBtn" type="button" aria-label="系統通知">
+                  <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
+                  <span class="notification-badge" id="notificationBadge" hidden>0</span>
+                </button>
+                <div class="notification-dropdown" id="notificationDropdown" hidden>
+                  <div class="notification-dropdown-header">
+                    <strong>系統通知</strong>
+                    <button class="clear-all-btn" id="clearAllNotificationsBtn" type="button">清除全部</button>
+                  </div>
+                  <div class="notification-dropdown-body" id="notificationList"></div>
                 </div>
-                <div class="notification-dropdown-body" id="notificationList"></div>
               </div>
+              <span class="live-chip" title="本機示範資料" id="liveChipContainer">
+                <span class="dot local"></span>
+                <span class="material-symbols-outlined connection-icon" style="font-size: 18px; margin-left: 2px;">cloud_queue</span>
+                <span id="topbarConnection" class="connection-text">本機示範資料</span>
+              </span>
+              <button class="nav-item topbar-nav-btn" data-view="settings" aria-label="設定" title="設定" type="button">
+                <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+              </button>
+              <button class="nav-item topbar-nav-btn" data-view="releases" aria-label="版本更新紀錄" title="版本更新紀錄" type="button">
+                <span class="material-symbols-outlined" aria-hidden="true">new_releases</span>
+              </button>
+               <button class="topbar-logout" id="coordinatorLogoutBtn" type="button" title="登出" aria-label="登出">
+                <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+              </button>
             </div>
-            <span class="live-chip" title="本機示範資料" id="liveChipContainer">
-              <span class="dot local"></span>
-              <span class="material-symbols-outlined connection-icon" style="font-size: 18px; margin-left: 2px;">cloud_queue</span>
-              <span id="topbarConnection" class="connection-text">本機示範資料</span>
-            </span>
-            <button class="nav-item topbar-nav-btn" data-view="settings" aria-label="設定" title="設定" type="button">
-              <span class="material-symbols-outlined" aria-hidden="true">settings</span>
-            </button>
-            <button class="nav-item topbar-nav-btn" data-view="releases" aria-label="版本更新紀錄" title="版本更新紀錄" type="button">
-              <span class="material-symbols-outlined" aria-hidden="true">new_releases</span>
-            </button>
-             <button class="topbar-logout" id="coordinatorLogoutBtn" type="button" title="登出" aria-label="登出">
-              <span class="material-symbols-outlined" aria-hidden="true">logout</span>
-            </button>
           </div>
         </header>
         <section id="appView" class="view-host" aria-live="polite"></section>
@@ -531,8 +522,9 @@
               <p class="eyebrow">管理接送排班</p>
               <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">event_repeat</span>接送排程</h3>
             </div>
-            <div class="heading-actions">
+            <div class="heading-actions" style="display: flex; align-items: center; gap: 8px;">
               <span class="count-pill" id="scheduleCount"></span>
+              <button class="icon-add-btn material-symbols-outlined" id="importScheduleBtn" type="button" title="匯入排程" aria-label="匯入排程" style="background: var(--brand-soft); color: var(--brand-dark); border: 1px solid rgba(0, 90, 90, 0.14);">upload_file</button>
               <button class="icon-add-btn material-symbols-outlined" id="openScheduleFormBtn" type="button" aria-label="新增排程">add</button>
             </div>
           </div>
@@ -642,6 +634,46 @@
                   <button class="ghost-btn" type="button" id="scheduleCancelBtn">清除</button>
                 </div>
               </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- CSV Import Modal -->
+        <section class="modal-overlay" id="csvImportPanel" hidden>
+          <div class="modal-card" style="max-width: 600px; width: 90%;">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">upload_file</span>
+                <span>匯入接送排程</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="csvImportCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+              <p class="subtext" style="margin: 0; line-height: 1.5; color: var(--muted);">
+                您可以透過上傳 CSV 格式的檔案大量匯入接送排程。請下載範本並填寫資料，個案與司機會自動依「姓名」或「編號/車號」進行模糊匹配。
+              </p>
+              
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="secondary-btn" type="button" id="downloadTemplateBtn" style="flex: 1; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                  <span class="material-symbols-outlined">download</span> 下載 CSV 範本
+                </button>
+                <button class="primary-btn" type="button" id="selectCsvFileBtn" style="flex: 1; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                  <span class="material-symbols-outlined">file_open</span> 選擇 CSV 檔案
+                </button>
+                <input type="file" id="csvFileInput" accept=".csv" style="display: none;" />
+              </div>
+              
+              <!-- Preview Section -->
+              <div id="importPreviewContainer" style="display: none; flex-direction: column; gap: 10px;">
+                <h4 style="margin: 10px 0 0 0; color: var(--brand-dark); font-size: 15px; font-weight: 800;">匯入資料預覽 (<span id="importPreviewCount">0</span> 筆)</h4>
+                <div id="importPreviewList" style="max-height: 240px; overflow-y: auto; border: 1px solid rgba(189, 201, 200, 0.58); border-radius: 12px; padding: 10px; background: #f8fafc; display: flex; flex-direction: column; gap: 8px;">
+                  <!-- Preview rows go here -->
+                </div>
+                <div class="form-actions full" style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button class="primary-btn" type="button" id="confirmImportBtn" style="flex: 1; min-height: 44px;">確認匯入</button>
+                  <button class="ghost-btn" type="button" id="cancelImportBtn" style="flex: 1; min-height: 44px;">取消</button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
