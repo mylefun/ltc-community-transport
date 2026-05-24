@@ -1885,6 +1885,12 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.case-address-line strong {
+  display: inline;
+  font-size: inherit;
+  margin-bottom: 0;
+}
+
 .inline-map-btn {
   display: inline-grid;
   flex: 0 0 auto;
