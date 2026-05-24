@@ -1699,7 +1699,7 @@ function scheduleCard(schedule) {
         <p class="subtext">上車 ${escapeHTML(schedule.scheduledPickup)} · 送達 ${escapeHTML(schedule.scheduledDropoff)}</p>
       </div>
       <div>
-        <p class="subtext">目的地：<strong>${escapeHTML(getAddressAlias(schedule.destinationAddress || "", caseItem))}</strong> <span style="font-size: 11px; color: var(--muted); margin-left: 4px;">${escapeHTML(getAddressReal(schedule.destinationAddress || ""))}</span></p>
+        <p class="subtext">目的地：<strong>${escapeHTML(getAddressAlias(schedule.destinationAddress || "", caseItem))}</strong></p>
         <p class="subtext">服務項目：${escapeHTML(schedule.purpose || "未填")}</p>
         <p class="subtext">特殊需求：${escapeHTML(schedule.specialRequirements || "無")}</p>
         <p class="subtext">例外變更：${overrideCount} 筆</p>
@@ -3166,10 +3166,10 @@ function renderCaseCard(person) {
           <ul>${contactList}</ul>
         </div>
         <p class="subtext case-address-line">
-          <span>上車：<strong>${escapeHTML(getAddressAlias(person.pickupAddress, person))}</strong><span style="font-size: 12px; color: var(--muted); margin-left: 6px;">${escapeHTML(getAddressReal(person.pickupAddress))}</span></span>
+          <span>上車：<strong>${escapeHTML(getAddressAlias(person.pickupAddress, person))}</strong></span>
         </p>
         <p class="subtext case-address-line">
-          <span>目的地：<strong>${escapeHTML(getAddressAlias(person.destinationAddress, person))}</strong><span style="font-size: 12px; color: var(--muted); margin-left: 6px;">${escapeHTML(getAddressReal(person.destinationAddress))}</span></span>
+          <span>目的地：<strong>${escapeHTML(getAddressAlias(person.destinationAddress, person))}</strong></span>
           <a class="inline-map-btn" href="${escapeHTML(routeUrl)}" target="_blank" rel="noopener" aria-label="開啟 ${escapeHTML(person.name)} 接送路徑">
             <span class="material-symbols-outlined" aria-hidden="true">map</span>
           </a>
