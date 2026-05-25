@@ -67,7 +67,21 @@ const communitySites = [
 
 const releaseNotes = [
   {
+    version: "v0.9.0",
+    date: "2026-05-25",
+    items: [
+      "新增地理圍欄自動打卡（Geofencing）：司機靠近接送地點 100 公尺內時自動偵測並彈出確認通知",
+      "地理圍欄確認通知顯示 5 秒倒數進度條，可選擇「立即確認」或「本次忽略」",
+      "自動比對接送地址座標（優先使用社區據點精確座標），到達接送地點或目的地均可觸發",
+      "司機登入後自動啟動 GPS 持續追蹤（watchPosition），登出後自動清除追蹤節省電量",
+      "同一班次同一事件（接到/送達）僅觸發一次通知，避免重複打卡",
+      "GPS 精度不足時（>200 公尺）跳過觸發，確保打卡準確性",
+      "不支援 GPS 或拒絕定位授權時，系統維持原有手動按鈕操作，不影響使用",
+    ],
+  },
+  {
     version: "v0.8.0",
+
     date: "2026-05-24",
     items: [
       "新增個案「開始服務日期」及「結案日期」欄位，並於個案卡片顯眼處直接顯示",
@@ -281,6 +295,15 @@ let flashMessage = "";
 let flashTone = "success";
 let flashScope = "global";
 let flashTimeout = null;
+
+// === Geofence Auto Check-in State ===
+const GEOFENCE_RADIUS_METERS = 100; // 觸發圍欄半徑（公尺）
+const GEOFENCE_COUNTDOWN_SECONDS = 5; // 自動確認倒數秒數
+let geofenceWatchId = null;        // watchPosition 的 ID，登出時清除
+let geofenceAlerted = new Set();   // 已觸發通知的 tripId+type key，避免重複觸發
+let geofenceCountdownTimer = null; // 倒數計時器
+let geofencePendingAction = null;  // 待確認的打卡動作 { trip, type, confirmFn }
+
 
 let state = normalizeState(loadState());
 state.serviceDate = todayKey();
@@ -4030,12 +4053,17 @@ function renderDriverWorkspace() {
   `;
 
   document.getElementById("driverLogoutBtn").addEventListener("click", () => {
+    stopGeofenceWatcher();
+    dismissGeofenceToast();
     activeDriverId = "";
     selectedLoginDriverId = "";
     renderDriver();
   });
 
   view.addEventListener("click", handleDriverTaskClick);
+
+  // 啟動地理圍欄持續追蹤
+  startGeofenceWatcher(activeDriverId);
 }
 
 function renderDriverTask(trip) {
@@ -4208,6 +4236,287 @@ function updateDriverLocation(driverId, tripId, eventType, updatedAt, location) 
     tripId,
   };
 }
+
+// ============================================================
+// === 地理圍欄自動打卡（Geofencing Auto Check-in）          ===
+// ============================================================
+
+/**
+ * 將地址解析為座標（公尺精度）
+ * 優先查找 communitySites，其次用 resolveCoordinate 估算
+ */
+function resolveGeofenceCoord(address) {
+  if (!address) return null;
+  const realAddr = getAddressReal(address);
+  // 1. 優先比對社區據點（有精確 lat/lng）
+  const site = communitySites.find((s) => {
+    const normSite = normalizeAddressForCompare(s.name);
+    const normAddr = normalizeAddressForCompare(s.address);
+    const normReal = normalizeAddressForCompare(realAddr);
+    return (
+      normReal === normSite ||
+      normReal.includes(normSite) ||
+      normReal === normAddr ||
+      normReal.includes(normAddr) ||
+      normAddr.includes(normReal)
+    );
+  });
+  if (site) return { lat: site.lat, lng: site.lng };
+
+  // 2. 嘗試用現有 resolveCoordinate 估算（適用住家地址）
+  const estimated = resolveCoordinate(realAddr, "", "geofence");
+  // 若估算結果明顯錯誤（零值），回傳 null
+  if (!estimated || !estimated.lat || !estimated.lng) return null;
+  return { lat: estimated.lat, lng: estimated.lng, estimated: true };
+}
+
+/**
+ * 計算兩點之間的距離（單位：公尺）
+ */
+function haversineDistanceM(lat1, lon1, lat2, lon2) {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
+  const R = 6_371_000; // 地球半徑（公尺）
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * 啟動 GPS 持續追蹤，司機登入時呼叫
+ */
+function startGeofenceWatcher(driverId) {
+  if (!navigator.geolocation) return; // 瀏覽器不支援，靜默降級
+  if (geofenceWatchId !== null) return; // 已在追蹤中，避免重複啟動
+
+  geofenceWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const { latitude: lat, longitude: lng, accuracy } = position.coords;
+      // GPS 精度不足（>200m）時跳過，避免誤觸發
+      if (accuracy > 200) return;
+      checkGeofenceTriggers(lat, lng, driverId);
+    },
+    (error) => {
+      // 定位失敗（權限拒絕等）：靜默忽略，手動按鈕仍可使用
+      console.warn("[Geofence] GPS error:", error.message);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 15_000,
+      timeout: 10_000,
+    }
+  );
+}
+
+/**
+ * 停止 GPS 持續追蹤，司機登出時呼叫
+ */
+function stopGeofenceWatcher() {
+  if (geofenceWatchId !== null) {
+    navigator.geolocation.clearWatch(geofenceWatchId);
+    geofenceWatchId = null;
+  }
+  geofenceAlerted.clear();
+}
+
+/**
+ * 檢查目前位置是否進入任一班次的地理圍欄
+ */
+function checkGeofenceTriggers(lat, lng, driverId) {
+  if (!driverId) return;
+  const myTrips = todayTrips().filter((trip) => trip.driverId === driverId);
+
+  for (const trip of myTrips) {
+    const person = getCase(trip.caseId);
+    const tripStatus = getTripStatus(trip);
+
+    // 班次已完成，跳過
+    if (tripStatus === "completed") continue;
+
+    // 決定比對目標
+    let targetAddress = "";
+    let eventType = "";
+
+    if (tripStatus === "scheduled" || tripStatus === "late") {
+      // 等待接客 → 比對上車地址
+      if (!trip.pickupTime) {
+        targetAddress = trip.pickupAddress || person?.pickupAddress || "";
+        eventType = "pickup";
+      }
+    } else if (tripStatus === "picked_up") {
+      // 接送中 → 比對目的地
+      targetAddress = trip.destinationAddress || person?.destinationAddress || "";
+      eventType = "dropoff";
+    }
+
+    if (!targetAddress || !eventType) continue;
+
+    const alertKey = `${trip.id}::${eventType}`;
+    if (geofenceAlerted.has(alertKey)) continue; // 已觸發過，跳過
+
+    const coord = resolveGeofenceCoord(targetAddress);
+    if (!coord) continue;
+
+    // 若座標是估算值（住家地址），使用較寬鬆的 200m 半徑
+    const radius = coord.estimated ? 200 : GEOFENCE_RADIUS_METERS;
+    const distanceM = haversineDistanceM(lat, lng, coord.lat, coord.lng);
+
+    if (distanceM <= radius) {
+      geofenceAlerted.add(alertKey); // 標記已觸發，避免重複
+      const locLabel = getAddressAlias(targetAddress, person);
+      showGeofenceToast(trip, person, eventType, locLabel, distanceM);
+      break; // 一次只處理一個班次，避免同時彈多個
+    }
+  }
+}
+
+/**
+ * 顯示地理圍欄確認通知（含倒數計時）
+ */
+function showGeofenceToast(trip, person, eventType, locLabel, distanceM) {
+  // 如果已有待確認通知，先清除舊的
+  dismissGeofenceToast();
+
+  const toast = document.getElementById("geofenceToast");
+  const eyebrow = document.getElementById("geofenceToastEyebrow");
+  const title = document.getElementById("geofenceToastTitle");
+  const sub = document.getElementById("geofenceToastSub");
+  const fill = document.getElementById("geofenceCountdownFill");
+  const countdownLabel = document.getElementById("geofenceCountdownLabel");
+  const confirmBtn = document.getElementById("geofenceConfirmBtn");
+  const dismissBtn = document.getElementById("geofenceDismissBtn");
+
+  if (!toast) return;
+
+  const isPickup = eventType === "pickup";
+  eyebrow.textContent = isPickup ? "自動偵測：接到地點" : "自動偵測：送達地點";
+  title.textContent = `已抵達 ${escapeHTML(locLabel)}`;
+  sub.textContent = `${escapeHTML(person?.name ?? "個案")}｜距離 ${Math.round(distanceM)} 公尺`;
+  countdownLabel.textContent = `${GEOFENCE_COUNTDOWN_SECONDS} 秒後自動確認打卡`;
+  fill.style.width = "100%";
+  fill.style.transition = "none";
+
+  toast.hidden = false;
+  // 強制 repaint 使 transition 生效
+  void fill.offsetWidth;
+  fill.style.transition = `width ${GEOFENCE_COUNTDOWN_SECONDS}s linear`;
+  fill.style.width = "0%";
+
+  let remaining = GEOFENCE_COUNTDOWN_SECONDS;
+
+  function tick() {
+    remaining -= 1;
+    countdownLabel.textContent = `${remaining} 秒後自動確認打卡`;
+    if (remaining <= 0) {
+      performGeofenceCheckin(trip, eventType);
+      dismissGeofenceToast();
+    } else {
+      geofenceCountdownTimer = window.setTimeout(tick, 1000);
+    }
+  }
+
+  geofenceCountdownTimer = window.setTimeout(tick, 1000);
+  geofencePendingAction = { trip, eventType };
+
+  // 設定按鈕事件（先移除舊的以防重複綁定）
+  const newConfirmBtn = confirmBtn.cloneNode(true);
+  const newDismissBtn = dismissBtn.cloneNode(true);
+  confirmBtn.replaceWith(newConfirmBtn);
+  dismissBtn.replaceWith(newDismissBtn);
+
+  newConfirmBtn.addEventListener("click", () => {
+    if (geofencePendingAction) {
+      performGeofenceCheckin(geofencePendingAction.trip, geofencePendingAction.eventType);
+    }
+    dismissGeofenceToast();
+  });
+
+  newDismissBtn.addEventListener("click", () => {
+    // 忽略：不打卡但也不從 alerted 移除（本次行程不再提示）
+    dismissGeofenceToast();
+  });
+
+  // 手機震動反饋（如果支援）
+  if (navigator.vibrate) {
+    navigator.vibrate([100, 50, 100]);
+  }
+}
+
+/**
+ * 清除地理圍欄通知 toast
+ */
+function dismissGeofenceToast() {
+  if (geofenceCountdownTimer !== null) {
+    window.clearTimeout(geofenceCountdownTimer);
+    geofenceCountdownTimer = null;
+  }
+  geofencePendingAction = null;
+  const toast = document.getElementById("geofenceToast");
+  if (toast) toast.hidden = true;
+}
+
+/**
+ * 執行地理圍欄打卡（複用現有手動打卡邏輯）
+ */
+async function performGeofenceCheckin(trip, eventType) {
+  if (!trip || !activeDriverId) return;
+  if (trip.driverId !== activeDriverId) return;
+
+  if (eventType === "pickup" && !trip.pickupTime) {
+    const location = await captureDriverLocation(activeDriverId, trip.id, "pickup");
+    if (dataMode === "supabase") {
+      try {
+        await apiAction("pickup", { tripId: trip.id, location });
+      } catch (error) {
+        console.error("[Geofence] 自動打卡失敗（pickup）:", error);
+      }
+    } else {
+      trip.pickupTime = localTime();
+      trip.pickupAt = new Date().toISOString();
+      trip.pickupLocation = location;
+      trip.status = "picked_up";
+      state.events.push({
+        id: uid("event"),
+        tripId: trip.id,
+        driverId: activeDriverId,
+        type: "pickup",
+        occurredAt: trip.pickupAt,
+        location,
+      });
+      updateDriverLocation(activeDriverId, trip.id, "pickup", trip.pickupAt, location);
+      saveState();
+    }
+    renderDriverWorkspace();
+  } else if (eventType === "dropoff" && trip.pickupTime && !trip.dropoffTime) {
+    const location = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
+    if (dataMode === "supabase") {
+      try {
+        await apiAction("dropoff", { tripId: trip.id, location });
+      } catch (error) {
+        console.error("[Geofence] 自動打卡失敗（dropoff）:", error);
+      }
+    } else {
+      trip.dropoffTime = localTime();
+      trip.dropoffAt = new Date().toISOString();
+      trip.dropoffLocation = location;
+      trip.status = "completed";
+      state.events.push({
+        id: uid("event"),
+        tripId: trip.id,
+        driverId: activeDriverId,
+        type: "dropoff",
+        occurredAt: trip.dropoffAt,
+        location,
+      });
+      updateDriverLocation(activeDriverId, trip.id, "dropoff", trip.dropoffAt, location);
+      saveState();
+    }
+    renderDriverWorkspace();
+  }
+}
+
 
 function renderSettings() {
   const host = document.getElementById("appView");

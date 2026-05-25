@@ -100,6 +100,32 @@
     </div>
     <div class="app-toast" id="appToast" role="status" aria-live="polite" hidden></div>
 
+    <!-- Geofence Auto Check-in Toast -->
+    <div class="geofence-toast" id="geofenceToast" hidden role="alertdialog" aria-modal="true" aria-labelledby="geofenceToastTitle">
+      <div class="geofence-toast-icon">
+        <span class="material-symbols-outlined">my_location</span>
+      </div>
+      <div class="geofence-toast-body">
+        <p class="geofence-toast-eyebrow" id="geofenceToastEyebrow">自動偵測到達</p>
+        <p class="geofence-toast-title" id="geofenceToastTitle">已抵達接送地點</p>
+        <p class="geofence-toast-sub" id="geofenceToastSub"></p>
+        <div class="geofence-countdown-bar">
+          <div class="geofence-countdown-fill" id="geofenceCountdownFill"></div>
+        </div>
+        <p class="geofence-countdown-label" id="geofenceCountdownLabel">5 秒後自動確認打卡</p>
+      </div>
+      <div class="geofence-toast-actions">
+        <button class="geofence-confirm-btn" id="geofenceConfirmBtn" type="button">
+          <span class="material-symbols-outlined">check_circle</span>
+          立即確認
+        </button>
+        <button class="geofence-dismiss-btn" id="geofenceDismissBtn" type="button">
+          <span class="material-symbols-outlined">cancel</span>
+          本次忽略
+        </button>
+      </div>
+    </div>
+
     <template id="homeTemplate">
       <section class="entry-shell">
         <div class="entry-hero work-section">
