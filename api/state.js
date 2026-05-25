@@ -1021,7 +1021,7 @@ async function markRideEvent(type, payload) {
   }
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   try {
     const requestUrl = new URL(req.url, "http://localhost");
     const serviceDate = requestUrl.searchParams.get("serviceDate") || todayKey();

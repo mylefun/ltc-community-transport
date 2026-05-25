@@ -4847,7 +4847,8 @@ async function init() {
   setInterval(updateClock, 15_000);
   try {
     await loadRemoteState();
-  } catch {
+  } catch (error) {
+    console.error("Supabase connection failed, falling back to local storage:", error);
     dataMode = "local";
     dataMessage = "本機示範資料";
   }
