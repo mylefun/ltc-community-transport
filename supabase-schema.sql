@@ -220,8 +220,7 @@ create index if not exists idx_daily_rides_case_date
   on public.daily_rides(case_id, service_date);
 
 create unique index if not exists idx_daily_rides_schedule_date
-  on public.daily_rides(schedule_id, service_date)
-  where schedule_id is not null;
+  on public.daily_rides(schedule_id, service_date);
 
 create index if not exists idx_ride_events_ride
   on public.ride_events(ride_id, occurred_at);
