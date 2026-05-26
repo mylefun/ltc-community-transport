@@ -63,9 +63,21 @@ const communitySites = [
   { name: "新社社區", address: "壯圍鄉新社路 54-3 號", lat: 24.78592, lng: 121.80945 },
   { name: "我們的家", address: "羅東鎮康莊路25號", lat: 24.66986, lng: 121.77691 },
   { name: "五結樂智", address: "五結鄉五結路二段360-1號", lat: 24.68547, lng: 121.79939 },
+  { name: "心安居", address: "壯圍鄉中央路2段265號", lat: 24.757, lng: 121.785 },
 ];
 
 const releaseNotes = [
+  {
+    version: "v0.9.1",
+    date: "2026-05-26",
+    items: [
+      "新增即時接送地圖「全螢幕模式」（放大/縮回切換，並支援 Escape 鍵快速退出）",
+      "新增同目的地個案「鏈式路徑串聯」（A案到B案再到共同目的地，並支援回程鏈式路徑）",
+      "新增 OSRM 真實汽車道路路徑繪製，取代原先直線路徑，並提供本地快取機制",
+      "修復個案定位偏差問題，新增日照據點「心安居」精確坐標，並引入 OSM Nominatim 漸進式地理解析與本地 localStorage 快取",
+      "修復地圖標記文字截斷不完整問題，將目的地與別名字數限制擴展至 20 個字元，完整保留門牌與號碼",
+    ],
+  },
   {
     version: "v0.9.0",
     date: "2026-05-25",
@@ -527,7 +539,7 @@ function getAddressAlias(val, caseIdOrObj = null) {
   }
   
   // 3. Fallback: return a shortened clean version of the address
-  return cleanAddress.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 8);
+  return cleanAddress.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 20);
 }
 
 function getAddressReal(val) {
@@ -2471,6 +2483,35 @@ let leafletMarkersGroup = null;
 let leafletRoutesGroup = null;
 let hasInitialFit = false;
 
+// Cache for OSRM road routes (key = "lng1,lat1;lng2,lat2;...")
+const osrmRouteCache = new Map();
+
+/**
+ * Fetch a road route from OSRM public API.
+ * Returns an array of [lat, lng] pairs, or null on failure.
+ */
+async function fetchOsrmRoute(waypoints) {
+  // waypoints: array of {lat, lng}
+  if (waypoints.length < 2) return null;
+  const coords = waypoints.map((w) => `${Number(w.lng).toFixed(6)},${Number(w.lat).toFixed(6)}`).join(";");
+  if (osrmRouteCache.has(coords)) return osrmRouteCache.get(coords);
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`OSRM ${res.status}`);
+    const data = await res.json();
+    if (data.code !== "Ok" || !data.routes?.[0]) throw new Error("OSRM no route");
+    // GeoJSON coords are [lng, lat] — convert to [lat, lng] for Leaflet
+    const latLngs = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    osrmRouteCache.set(coords, latLngs);
+    return latLngs;
+  } catch {
+    osrmRouteCache.set(coords, null); // cache failure to avoid retries
+    return null;
+  }
+}
+
 // We hook requestView to reset hasInitialFit so when they switch views and come back, we fit bounds again
 const originalRequestView = requestView;
 requestView = function(view) {
@@ -2539,17 +2580,21 @@ function initOrUpdateLeafletMap() {
   controlsDiv.setAttribute("aria-label", "地圖縮放控制");
   
   const scalePct = Math.round((leafletMapInstance.getZoom() / 12) * 100);
+  const isFullscreen = container.closest(".map-section")?.classList.contains("map-fullscreen");
   controlsDiv.innerHTML = `
     <button class="map-control-btn" type="button" data-map-action="zoom-out" aria-label="縮小地圖">−</button>
     <output class="map-zoom-label" aria-label="目前縮放倍率">${scalePct}%</output>
     <button class="map-control-btn" type="button" data-map-action="zoom-in" aria-label="放大地圖">+</button>
     <button class="map-reset-btn" type="button" data-map-action="reset">重設</button>
+    <button class="map-control-btn map-fullscreen-btn" type="button" data-map-action="fullscreen" aria-label="${isFullscreen ? "縮回地圖" : "全螢幕地圖"}" title="${isFullscreen ? "縮回" : "全螢幕"}">
+      <span class="material-symbols-outlined" style="font-size:18px;">${isFullscreen ? "close_fullscreen" : "open_in_full"}</span>
+    </button>
   `;
   container.appendChild(controlsDiv);
 
   const helpDiv = document.createElement("div");
   helpDiv.className = "map-help";
-  helpDiv.textContent = "拖曳平移 · 滾輪縮放 · 縮小可看全體司機";
+  helpDiv.textContent = "拖曳平移 · 滾輪縮放 · 路徑顯示接送順序";
   container.appendChild(helpDiv);
 
   // Bind controls event listeners
@@ -2562,6 +2607,8 @@ function initOrUpdateLeafletMap() {
       leafletMapInstance.zoomOut();
     } else if (action === "reset") {
       fitAllMapBounds(true);
+    } else if (action === "fullscreen") {
+      toggleMapFullscreen();
     }
   });
 
@@ -2574,13 +2621,43 @@ function initOrUpdateLeafletMap() {
   updateLeafletData();
 }
 
-function updateLeafletData() {
+function toggleMapFullscreen() {
+  const container = document.getElementById("liveMap");
+  if (!container) return;
+  const mapSection = container.closest(".map-section");
+  if (!mapSection) return;
+  const isFullscreen = mapSection.classList.toggle("map-fullscreen");
+  // Update the fullscreen button icon
+  const btn = container.querySelector(".map-fullscreen-btn");
+  if (btn) {
+    const icon = btn.querySelector(".material-symbols-outlined");
+    if (icon) icon.textContent = isFullscreen ? "close_fullscreen" : "open_in_full";
+    btn.setAttribute("aria-label", isFullscreen ? "縮回地圖" : "全螢幕地圖");
+    btn.setAttribute("title", isFullscreen ? "縮回" : "全螢幕");
+  }
+  // Ensure leaflet re-renders at new size
+  setTimeout(() => {
+    if (leafletMapInstance) leafletMapInstance.invalidateSize();
+    fitAllMapBounds(true);
+  }, 320);
+}
+
+async function updateLeafletData() {
   if (!leafletMapInstance) return;
 
   leafletMarkersGroup.clearLayers();
   leafletRoutesGroup.clearLayers();
 
   const allPoints = [];
+
+  // Route color palette per driver index
+  const routePalette = [
+    { active: "#168052", scheduled: "#2764a5", late: "#be3f36" },
+    { active: "#7B3FA0", scheduled: "#9C5BC4", late: "#be3f36" },
+    { active: "#B85C00", scheduled: "#D98B3A", late: "#be3f36" },
+    { active: "#0a6b7c", scheduled: "#1893a4", late: "#be3f36" },
+    { active: "#5A7D10", scheduled: "#7FA820", late: "#be3f36" },
+  ];
 
   // 1. Draw driver markers
   state.drivers.forEach((driver) => {
@@ -2623,77 +2700,249 @@ function updateLeafletData() {
     }
   });
 
-  // 2. Draw trip routes
+  // Helper: resolve a coordinate from trip/case data using real address
+  function resolvePickupCoord(trip, idx, driverLocation, status) {
+    if (idx === 0 && status === "picked_up" && driverLocation) return driverLocation;
+    if (trip.pickupLocation?.lat) return trip.pickupLocation;
+    const person = getCase(trip.caseId);
+    const addr = trip.pickupAddress || person?.pickupAddress || "";
+    if (addr) return resolveCoordinate(addr, trip.caseId, "pickup");
+    return null;
+  }
+
+  function resolveDestCoord(trip) {
+    if (trip.dropoffLocation?.lat) return trip.dropoffLocation;
+    const person = getCase(trip.caseId);
+    const addr = trip.destinationAddress || person?.destinationAddress || "";
+    if (addr) return resolveCoordinate(addr, trip.caseId, "destination");
+    return null;
+  }
+
+  // 2. Draw trip routes - grouped by driver to show A→B→C chained pickup paths
   const activeTrips = todayTrips().filter((trip) => getTripStatus(trip) !== "completed");
+
+  // Pre-fetch/geocode any addresses that are not in cache or communitySites
+  const pendingAddresses = new Set();
   activeTrips.forEach((trip) => {
     const person = getCase(trip.caseId);
+    if (!person) return;
+    const pickupAddr = trip.pickupAddress || person.pickupAddress || "";
+    const destAddr = trip.destinationAddress || person.destinationAddress || "";
+    if (pickupAddr) {
+      const realPickup = getAddressReal(pickupAddr).trim();
+      const hasSite = communitySites.some(s => 
+        (s.name && realPickup.includes(s.name)) || 
+        (s.address && realPickup.includes(s.address)) || 
+        (s.address && s.address.includes(realPickup))
+      );
+      if (!hasSite && !geocodingCache[realPickup]) {
+        pendingAddresses.add(pickupAddr);
+      }
+    }
+    if (destAddr) {
+      const realDest = getAddressReal(destAddr).trim();
+      const hasSite = communitySites.some(s => 
+        (s.name && realDest.includes(s.name)) || 
+        (s.address && realDest.includes(s.address)) || 
+        (s.address && s.address.includes(realDest))
+      );
+      if (!hasSite && !geocodingCache[realDest]) {
+        pendingAddresses.add(destAddr);
+      }
+    }
+  });
+
+  if (pendingAddresses.size > 0) {
+    (async () => {
+      let resolvedAny = false;
+      for (const addr of pendingAddresses) {
+        const res = await geocodeAddress(addr);
+        if (res) resolvedAny = true;
+      }
+      if (resolvedAny) {
+        console.log("Geocoding cache updated, redrawing Leaflet map...");
+        updateLeafletData();
+      }
+    })();
+  }
+
+  // Group trips by driverId, sorted by scheduledPickup time
+  const tripsByDriver = {};
+  activeTrips.forEach((trip) => {
     const driver = getDriver(trip.driverId);
-    if (!person || !driver) return;
+    if (!driver) return;
+    if (!tripsByDriver[driver.id]) tripsByDriver[driver.id] = [];
+    tripsByDriver[driver.id].push(trip);
+  });
+  Object.values(tripsByDriver).forEach((trips) => {
+    trips.sort((a, b) => a.scheduledPickup.localeCompare(b.scheduledPickup));
+  });
 
-    const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
-    const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
-    const driverLocation = state.driverLocations[trip.driverId];
-    const status = getTripStatus(trip);
+  const driverIds = Object.keys(tripsByDriver);
 
-    const start = status === "picked_up" && driverLocation ? driverLocation : pickup;
-    const end = destination;
+  // Build all route groups first, then fetch OSRM routes in parallel
+  const routeGroups = [];
 
-    if (start && start.lat && start.lng && end && end.lat && end.lng) {
-      const startLatLng = [Number(start.lat), Number(start.lng)];
-      const endLatLng = [Number(end.lat), Number(end.lng)];
+  driverIds.forEach((driverId, driverIdx) => {
+    const driver = getDriver(driverId);
+    if (!driver) return;
+    const trips = tripsByDriver[driverId];
+    const palette = routePalette[driverIdx % routePalette.length];
+    const driverLocation = state.driverLocations[driverId];
 
-      allPoints.push(startLatLng);
-      allPoints.push(endLatLng);
+    // Group consecutive trips by destination address
+    const destGroups = [];
+    trips.forEach((trip) => {
+      const destAddr = trip.destinationAddress || getCase(trip.caseId)?.destinationAddress || "";
+      const last = destGroups[destGroups.length - 1];
+      if (last && last.destAddr === destAddr) {
+        last.trips.push(trip);
+      } else {
+        destGroups.push({ destAddr, trips: [trip] });
+      }
+    });
 
-      const strokeClass = status === "picked_up" ? "active" : status === "late" ? "late" : "scheduled";
+    destGroups.forEach((group) => {
+      const groupTrips = group.trips;
+      const waypoints = [];
 
-      // Draw polyline
-      const polyline = L.polyline([startLatLng, endLatLng], {
-        className: `route-line ${strokeClass}`,
-        color: status === "picked_up" ? "#168052" : status === "late" ? "#be3f36" : "#2764a5",
-        weight: status === "picked_up" ? 3.5 : 2.5,
-        dashArray: status === "picked_up" ? null : "4, 4"
+      groupTrips.forEach((trip, idx) => {
+        const person = getCase(trip.caseId);
+        if (!person) return;
+        const status = getTripStatus(trip);
+        const coord = resolvePickupCoord(trip, idx, driverLocation, status);
+        if (coord && coord.lat && coord.lng) {
+          waypoints.push({
+            latLng: [Number(coord.lat), Number(coord.lng)],
+            coord: { lat: Number(coord.lat), lng: Number(coord.lng) },
+            isPickup: true,
+            trip,
+            person,
+            idx,
+          });
+          allPoints.push([Number(coord.lat), Number(coord.lng)]);
+        }
       });
-      polyline.addTo(leafletRoutesGroup);
 
-      // Draw start circle marker
-      const startDot = L.circleMarker(startLatLng, {
-        className: "route-dot start",
-        radius: 5.5,
-        fillColor: "#ffffff",
-        fillOpacity: 1,
-        color: "rgba(23, 33, 43, 0.4)",
-        weight: 1.5
-      });
-      startDot.addTo(leafletRoutesGroup);
+      const lastTrip = groupTrips[groupTrips.length - 1];
+      const destCoord = resolveDestCoord(lastTrip);
+      if (destCoord && destCoord.lat && destCoord.lng) {
+        waypoints.push({
+          latLng: [Number(destCoord.lat), Number(destCoord.lng)],
+          coord: { lat: Number(destCoord.lat), lng: Number(destCoord.lng) },
+          isPickup: false,
+          trip: lastTrip,
+          person: getCase(lastTrip.caseId),
+          idx: groupTrips.length,
+        });
+        allPoints.push([Number(destCoord.lat), Number(destCoord.lng)]);
+      }
 
-      // Draw end circle marker
-      const endDot = L.circleMarker(endLatLng, {
-        className: "route-dot end",
-        radius: 5.5,
-        fillColor: "#fbc02d",
-        fillOpacity: 1,
-        color: "rgba(23, 33, 43, 0.4)",
-        weight: 1.5
-      });
-      endDot.addTo(leafletRoutesGroup);
+      if (waypoints.length < 2) return;
 
-      // Draw midpoint route label
+      const hasActive = groupTrips.some((t) => getTripStatus(t) === "picked_up");
+      const hasLate = groupTrips.some((t) => getTripStatus(t) === "late");
+
+      routeGroups.push({ driver, groupTrips, waypoints, palette, hasActive, hasLate });
+    });
+  });
+
+  // Fetch OSRM road routes for all groups in parallel
+  await Promise.all(
+    routeGroups.map(async (rg) => {
+      rg.roadCoords = await fetchOsrmRoute(rg.waypoints.map((wp) => wp.coord));
+    })
+  );
+
+  // Now draw all route groups
+  routeGroups.forEach(({ driver, groupTrips, waypoints, palette, hasActive, hasLate, roadCoords }) => {
+    const routeColor = hasLate ? palette.late : hasActive ? palette.active : palette.scheduled;
+    const routeWeight = hasActive ? 4 : 3;
+    const routeDash = hasActive ? null : "7, 5";
+
+    // Draw polyline: use OSRM road geometry if available, else straight line
+    const polylineCoords = roadCoords ?? waypoints.map((wp) => wp.latLng);
+    const polyline = L.polyline(polylineCoords, {
+      color: routeColor,
+      weight: routeWeight,
+      dashArray: routeDash,
+      opacity: 0.88,
+      lineJoin: "round",
+      lineCap: "round",
+    });
+    polyline.addTo(leafletRoutesGroup);
+
+    // Draw stop markers
+    waypoints.forEach((wp, wpIdx) => {
+      const isLast = wpIdx === waypoints.length - 1;
+
+      if (isLast) {
+        const endDot = L.circleMarker(wp.latLng, {
+          radius: 8,
+          fillColor: "#fbc02d",
+          fillOpacity: 1,
+          color: "rgba(23,33,43,0.5)",
+          weight: 2,
+        });
+        endDot.addTo(leafletRoutesGroup);
+
+        const destName = (wp.trip.destinationAddress || getCase(wp.trip.caseId)?.destinationAddress || "目的地")
+          .replace(/宜蘭縣|台北市|壯圍鄉|五結鄉|羅東鎮/g, "").substring(0, 20);
+        const destLabelMarker = L.marker(wp.latLng, {
+          icon: L.divIcon({
+            className: "route-label-leaflet",
+            html: `<div class="route-stop-label dest-label">🏁 ${escapeHTML(destName)}</div>`,
+            iconSize: null,
+            iconAnchor: [40, -6],
+          }),
+          interactive: false,
+        });
+        destLabelMarker.addTo(leafletRoutesGroup);
+      } else {
+        const stopColor = (wpIdx === 0 && hasActive) ? routeColor : "#ffffff";
+        const startDot = L.circleMarker(wp.latLng, {
+          radius: 8,
+          fillColor: stopColor,
+          fillOpacity: 1,
+          color: routeColor,
+          weight: 2.5,
+        });
+        startDot.addTo(leafletRoutesGroup);
+
+        const stopLetter = groupTrips.length > 1 ? String.fromCharCode(65 + wpIdx) : "";
+        const stopLabel = `${stopLetter ? stopLetter + ". " : ""}${(wp.person?.name || "").substring(0, 20)}`;
+        const stopMarker = L.marker(wp.latLng, {
+          icon: L.divIcon({
+            className: "route-label-leaflet",
+            html: `<div class="route-stop-label pickup-label" style="border-color:${routeColor};">${escapeHTML(stopLabel)}</div>`,
+            iconSize: null,
+            iconAnchor: [40, -6],
+          }),
+          interactive: false,
+        });
+        stopMarker.addTo(leafletRoutesGroup);
+      }
+    });
+
+    // Mid-segment driver label tag
+    for (let i = 0; i < waypoints.length - 1; i++) {
       const midLatLng = [
-        (Number(start.lat) + Number(end.lat)) / 2,
-        (Number(start.lng) + Number(end.lng)) / 2
+        (waypoints[i].latLng[0] + waypoints[i + 1].latLng[0]) / 2,
+        (waypoints[i].latLng[1] + waypoints[i + 1].latLng[1]) / 2,
       ];
-      const labelText = `${driver.name.slice(0, 1)}-${person.name.slice(0, 1)}`;
-      const routeLabelMarker = L.marker(midLatLng, {
+      const driverInitial = driver.name.slice(0, 1);
+      const segLabel = groupTrips.length > 1
+        ? `${driverInitial}→${String.fromCharCode(65 + (i + 1 < groupTrips.length ? i + 1 : groupTrips.length - 1))}`
+        : driverInitial;
+      L.marker(midLatLng, {
         icon: L.divIcon({
           className: "route-label-leaflet",
-          html: `<span>${escapeHTML(labelText)}</span>`,
+          html: `<span class="route-segment-tag" style="background:${routeColor}">${escapeHTML(segLabel)}</span>`,
           iconSize: null,
-          iconAnchor: [20, 10]
+          iconAnchor: [14, 10],
         }),
-        interactive: false
-      });
-      routeLabelMarker.addTo(leafletRoutesGroup);
+        interactive: false,
+      }).addTo(leafletRoutesGroup);
     }
   });
 
@@ -2722,8 +2971,10 @@ function fitAllMapBounds(force = false) {
   activeTrips.forEach((trip) => {
     const person = getCase(trip.caseId);
     if (!person) return;
-    const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
-    const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
+    const pickupAddr = trip.pickupAddress || person.pickupAddress || "";
+    const destAddr = trip.destinationAddress || person.destinationAddress || "";
+    const pickup = trip.pickupLocation ?? (pickupAddr ? resolveCoordinate(pickupAddr, trip.caseId, "pickup") : null);
+    const destination = trip.dropoffLocation ?? (destAddr ? resolveCoordinate(destAddr, trip.caseId, "destination") : null);
     if (pickup && pickup.lat && pickup.lng) {
       allPoints.push([Number(pickup.lat), Number(pickup.lng)]);
     }
@@ -2868,14 +3119,103 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return Number(Math.max(0.1, dist).toFixed(1));
 }
 
+const geocodingCacheKey = "shuttle_geocoding_cache";
+let geocodingCache = {};
+try {
+  const cached = localStorage.getItem(geocodingCacheKey);
+  if (cached) geocodingCache = JSON.parse(cached);
+} catch (e) {
+  console.error("Failed to load geocoding cache", e);
+}
+
+let activeGeocodingRequests = new Set();
+
+async function geocodeAddress(address) {
+  const cleanAddr = getAddressReal(address).trim();
+  if (!cleanAddr) return null;
+  
+  if (geocodingCache[cleanAddr]) return geocodingCache[cleanAddr];
+  if (activeGeocodingRequests.has(cleanAddr)) return null;
+  activeGeocodingRequests.add(cleanAddr);
+
+  let realAddr = cleanAddr.replace(/巿/g, "市");
+  
+  if ((realAddr.includes("壯圍") || realAddr.includes("五結") || realAddr.includes("羅東") || realAddr.includes("宜蘭")) && !realAddr.includes("宜蘭縣")) {
+    realAddr = "宜蘭縣" + realAddr;
+  }
+
+  let townshipFallback = "";
+  const match = realAddr.match(/^(宜蘭縣|台北市)?(壯圍鄉|五結鄉|羅東鎮|宜蘭市|礁溪鄉|員山鄉|三星鄉|冬山鄉|蘇澳鎮|頭城鎮)/);
+  if (match) {
+    const county = match[1] || "宜蘭縣";
+    const township = match[2];
+    townshipFallback = county + township;
+  }
+
+  const steps = [
+    realAddr,
+    realAddr.replace(/(號)[\d樓\-室\s\/A-Za-z]+.*$/, "$1"),
+    realAddr.replace(/\d+號.*$/, ""),
+    realAddr.replace(/\d+巷.*$/, ""),
+    realAddr.replace(/[\u4e00-\u9fa5]+(村|里)/, ""),
+    townshipFallback
+  ];
+
+  const uniqueSteps = [...new Set(steps.map(s => s.trim()).filter(s => s.length > 3))];
+  let result = null;
+
+  for (const query of uniqueSteps) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'AntigravityShuttleApp/1.0'
+        }
+      });
+      const data = await res.json();
+      if (data && data.length > 0) {
+        result = {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon)
+        };
+        break;
+      }
+    } catch (e) {
+      console.error(`Geocoding error for query "${query}":`, e);
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  activeGeocodingRequests.delete(cleanAddr);
+
+  if (result) {
+    geocodingCache[cleanAddr] = result;
+    try {
+      localStorage.setItem(geocodingCacheKey, JSON.stringify(geocodingCache));
+    } catch (e) {
+      console.error("Failed to save geocoding cache", e);
+    }
+    return result;
+  }
+  return null;
+}
+
 function resolveCoordinate(address, caseId, type) {
-  const realAddress = getAddressReal(address);
+  const realAddress = getAddressReal(address).trim();
+  if (!realAddress) {
+    return { lat: 24.757, lng: 121.785 };
+  }
+
   const site = communitySites.find(s => 
     (s.name && realAddress.includes(s.name)) || 
     (s.address && realAddress.includes(s.address)) || 
     (s.address && s.address.includes(realAddress))
   );
   if (site) return { lat: site.lat, lng: site.lng };
+
+  if (geocodingCache[realAddress]) {
+    return geocodingCache[realAddress];
+  }
 
   const isYilan = /宜蘭|壯圍|五結|羅東/.test(realAddress);
   const seed = [...(realAddress || `${caseId}-${type}`)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -2907,7 +3247,7 @@ function getLocationName(address, isHome, caseId = null) {
   for (const s of communitySites) {
     if (address.includes(s.name)) return s.name;
   }
-  return address.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 6);
+  return address.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 20);
 }
 
 function reimbursementRows(selectedMonth) {
@@ -5158,6 +5498,15 @@ async function init() {
   setupPullToRefresh();
   updateClock();
   setInterval(updateClock, 15_000);
+
+  // Escape key exits fullscreen map
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const mapSection = document.querySelector(".map-section.map-fullscreen");
+      if (mapSection) toggleMapFullscreen();
+    }
+  });
+
   try {
     await loadRemoteState();
   } catch (error) {
