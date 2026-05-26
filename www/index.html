@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>社區交通車每日接送系統</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&family=Noto+Sans+TC:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="pull-refresh" id="pullRefresh" aria-hidden="true">下拉重新整理</div>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主選單">
+        <div class="sidebar-head">
+          <div class="brand">
+            <span class="brand-mark material-symbols-outlined" aria-hidden="true">local_shipping</span>
+            <div class="brand-text">
+              <p class="eyebrow">社照會</p>
+              <h1>社區交通車接送系統</h1>
+            </div>
+          </div>
+          <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="收合側邊選單">‹</button>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="home" aria-label="主入口">
+            <span class="material-symbols-outlined" aria-hidden="true">home</span>
+            <b>主入口</b>
+          </button>
+          <button class="nav-item" data-view="dashboard" aria-label="承辦人入口">
+            <span class="material-symbols-outlined" aria-hidden="true">dashboard</span>
+            <b>承辦人入口</b>
+          </button>
+          <button class="nav-item" data-view="driver" aria-label="司機入口">
+            <span class="material-symbols-outlined" aria-hidden="true">route</span>
+            <b>司機入口</b>
+          </button>
+        </nav>
+
+        <section class="today-panel" aria-label="今日摘要">
+          <p class="muted-label">服務日期與時間</p>
+          <strong id="todayLabel"></strong>
+        </section>
+      </aside>
+
+      <main class="main-area">
+        <header class="app-topbar" aria-label="系統工具列">
+          <div class="topbar-brand">
+            <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
+            <strong>社區交通車調度中心</strong>
+          </div>
+          <div class="topbar-actions">
+            <!-- Mobile Menu Toggle Button -->
+            <button class="topbar-action-btn menu-toggle-btn" id="topbarMenuToggleBtn" type="button" aria-label="系統選單">
+              <span class="material-symbols-outlined" aria-hidden="true">widgets</span>
+              <span class="notification-badge" id="topbarMenuBadge" hidden>0</span>
+            </button>
+
+            <!-- Actions Wrapper (Dropdown Menu on Mobile) -->
+            <div class="topbar-actions-wrapper" id="topbarActionsWrapper">
+              <div class="notification-container">
+                <button class="topbar-action-btn notification-bell-btn" id="notificationBellBtn" type="button" aria-label="系統通知">
+                  <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
+                  <span class="notification-badge" id="notificationBadge" hidden>0</span>
+                </button>
+                <div class="notification-dropdown" id="notificationDropdown" hidden>
+                  <div class="notification-dropdown-header">
+                    <strong>系統通知</strong>
+                    <button class="clear-all-btn" id="clearAllNotificationsBtn" type="button">清除全部</button>
+                  </div>
+                  <div class="notification-dropdown-body" id="notificationList"></div>
+                </div>
+              </div>
+              <span class="live-chip" title="本機示範資料" id="liveChipContainer">
+                <span class="dot local"></span>
+                <span class="material-symbols-outlined connection-icon" style="font-size: 18px; margin-left: 2px;">cloud_queue</span>
+                <span id="topbarConnection" class="connection-text">本機示範資料</span>
+              </span>
+              <button class="nav-item topbar-nav-btn" data-view="settings" aria-label="設定" title="設定" type="button">
+                <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+              </button>
+              <button class="nav-item topbar-nav-btn" data-view="releases" aria-label="版本更新紀錄" title="版本更新紀錄" type="button">
+                <span class="material-symbols-outlined" aria-hidden="true">new_releases</span>
+              </button>
+               <button class="topbar-logout" id="coordinatorLogoutBtn" type="button" title="登出" aria-label="登出">
+                <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+              </button>
+            </div>
+          </div>
+        </header>
+        <section id="appView" class="view-host" aria-live="polite"></section>
+      </main>
+    </div>
+    <div class="app-toast" id="appToast" role="status" aria-live="polite" hidden></div>
+
+    <!-- Geofence Auto Check-in Toast -->
+    <div class="geofence-toast" id="geofenceToast" hidden role="alertdialog" aria-modal="true" aria-labelledby="geofenceToastTitle">
+      <div class="geofence-toast-icon">
+        <span class="material-symbols-outlined">my_location</span>
+      </div>
+      <div class="geofence-toast-body">
+        <p class="geofence-toast-eyebrow" id="geofenceToastEyebrow">自動偵測到達</p>
+        <p class="geofence-toast-title" id="geofenceToastTitle">已抵達接送地點</p>
+        <p class="geofence-toast-sub" id="geofenceToastSub"></p>
+        <div class="geofence-countdown-bar">
+          <div class="geofence-countdown-fill" id="geofenceCountdownFill"></div>
+        </div>
+        <p class="geofence-countdown-label" id="geofenceCountdownLabel">5 秒後自動確認打卡</p>
+      </div>
+      <div class="geofence-toast-actions">
+        <button class="geofence-confirm-btn" id="geofenceConfirmBtn" type="button">
+          <span class="material-symbols-outlined">check_circle</span>
+          立即確認
+        </button>
+        <button class="geofence-dismiss-btn" id="geofenceDismissBtn" type="button">
+          <span class="material-symbols-outlined">cancel</span>
+          本次忽略
+        </button>
+      </div>
+    </div>
+
+    <template id="homeTemplate">
+      <section class="entry-shell">
+        <div class="entry-hero work-section">
+          <p class="eyebrow">長照社區交通</p>
+          <h2>每日接送系統</h2>
+          <p class="subtext">請依照使用身分進入工作區。承辦人可查看調度、個案與司機資料；司機可快速登入並完成接送打卡。</p>
+        </div>
+
+        <div class="entry-grid">
+          <article class="entry-card coordinator">
+            <span class="entry-icon material-symbols-outlined" aria-hidden="true">admin_panel_settings</span>
+            <div>
+              <p class="eyebrow">承辦人</p>
+              <h3>進入承辦人入口</h3>
+              <p class="subtext">查看今日調度、司機位置、個案管理與司機管理。</p>
+            </div>
+            <button class="primary-btn" id="openCoordinatorEntryBtn" type="button">
+              <span class="material-symbols-outlined" aria-hidden="true">login</span>
+              承辦人登入
+            </button>
+          </article>
+
+          <article class="entry-card driver">
+            <span class="entry-icon material-symbols-outlined" aria-hidden="true">route</span>
+            <div>
+              <p class="eyebrow">司機</p>
+              <h3>進入司機入口</h3>
+              <p class="subtext">選擇司機、輸入 PIN，接到與送達只需按一下。</p>
+            </div>
+            <button class="secondary-btn" id="openDriverEntryBtn" type="button">
+              <span class="material-symbols-outlined" aria-hidden="true">directions_car</span>
+              司機登入
+            </button>
+          </article>
+        </div>
+      </section>
+    </template>
+
+    <template id="dashboardTemplate">
+      <div class="summary-grid" id="summaryGrid"></div>
+      <section class="dispatch-shell">
+        <div class="dispatch-main">
+          <section class="work-section schedule-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">即時接送狀態</p>
+                <h3>今日班表</h3>
+              </div>
+              <div class="filter-row">
+                <label class="date-filter">
+                  服務日期
+                  <input type="date" id="serviceDatePicker" />
+                </label>
+                <label>
+                  司機
+                  <select id="driverFilter"></select>
+                </label>
+                <label>
+                  狀態
+                  <select id="statusFilter">
+                    <option value="all">全部</option>
+                    <option value="scheduled">待接</option>
+                    <option value="picked_up">接送中</option>
+                    <option value="completed">已完成</option>
+                    <option value="late">可能延遲</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="route-board" id="routeBoard"></div>
+          </section>
+        </div>
+
+        <aside class="dispatch-side">
+          <section class="work-section map-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">司機即時位置</p>
+                <h3>接送定位地圖</h3>
+              </div>
+              <span class="count-pill" id="mapDriverCount"></span>
+            </div>
+            <div class="live-map" id="liveMap" aria-label="司機定位地圖"></div>
+          </section>
+        </aside>
+      </section>
+
+    </template>
+
+    <template id="casesTemplate">
+      <div class="case-workspace" id="caseWorkspace">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">管理個案資料</p>
+              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">accessible_forward</span>個案名冊</h3>
+            </div>
+            <div class="heading-actions">
+              <span class="count-pill" id="caseCount"></span>
+              <button class="icon-add-btn material-symbols-outlined" id="openCaseFormBtn" type="button" aria-label="新增個案">add</button>
+            </div>
+          </div>
+          <p class="inline-notice" id="caseNotice" hidden></p>
+          <div class="case-list" id="caseList"></div>
+        </section>
+
+        <section class="modal-overlay" id="caseFormPanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">assignment</span>
+                <span id="caseFormMode">新增個案</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="caseFormCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body">
+              <form class="case-form" id="caseForm">
+            <input type="hidden" name="id" />
+            <label>
+              <span>個案姓名 <span style="color: var(--red); font-weight: bold;">*</span></span>
+              <input required name="name" autocomplete="name" />
+            </label>
+            <label>
+              <span>個案編號 <span style="color: var(--red); font-weight: bold;">*</span></span>
+              <input required name="caseNo" placeholder="LTC-006" />
+            </label>
+            <label>
+              身分證字號
+              <input name="identityNo" autocomplete="off" />
+            </label>
+            <label>
+              性別
+              <select name="gender">
+                <option value="">未填</option>
+                <option>女</option>
+                <option>男</option>
+                <option>其他</option>
+              </select>
+            </label>
+            <label>
+              出生日期
+              <input name="birthDate" type="text" inputmode="numeric" placeholder="YYYY-MM-DD（西元年4碼）" pattern="\d{4}-\d{2}-\d{2}" />
+            </label>
+            <label>
+              福利身分
+              <input name="welfareStatus" placeholder="第三類(一般戶)" />
+            </label>
+            <label>
+              <span>主要電話 <span style="color: var(--red); font-weight: bold;">*</span></span>
+              <input required name="phone" inputmode="tel" />
+            </label>
+            <label>
+              室內電話
+              <input name="landlinePhone" inputmode="tel" placeholder="03-9300000" />
+            </label>
+            <label>
+              手機
+              <input name="mobilePhone" inputmode="tel" placeholder="0912-345678" />
+            </label>
+            <label>
+              緊急聯絡人
+              <input name="emergencyContact" />
+            </label>
+            <label>
+              關係
+              <input name="emergencyRelation" placeholder="子女、配偶、照顧者" />
+            </label>
+            <label>
+              緊急電話
+              <input name="emergencyPhone" inputmode="tel" />
+            </label>
+            <label class="full">
+              其他緊急聯絡人
+              <textarea name="emergencyContactsText" rows="3" placeholder="每行一位：姓名｜關係｜電話"></textarea>
+            </label>
+            <label>
+              照顧等級
+              <select name="careLevel">
+                <option>長照2.0 2級</option>
+                <option>長照2.0 3級</option>
+                <option selected>長照2.0 4級</option>
+                <option>長照2.0 5級</option>
+                <option>長照2.0 6級以上</option>
+              </select>
+            </label>
+            <label>
+              行動狀態
+              <select name="mobility">
+                <option>可自行上下車</option>
+                <option>需攙扶</option>
+                <option>輪椅</option>
+                <option>臥床移位</option>
+              </select>
+            </label>
+            <label>
+              輔具/車型需求
+              <input name="assistiveDevice" placeholder="輪椅、爬梯機、陪同者" />
+            </label>
+            <label>
+              服務區域
+              <input name="serviceArea" placeholder="中正區、萬華區" />
+            </label>
+            <label>
+              開始服務日期
+              <input name="serviceStartDate" type="date" />
+            </label>
+            <label>
+              結案日期
+              <input name="serviceEndDate" type="date" />
+            </label>
+            <label>
+              個管員
+              <input name="careManager" />
+            </label>
+            <label>
+              個管員電話
+              <input name="careManagerPhone" inputmode="tel" />
+            </label>
+            <label class="full">
+              <span>上車地址 <span style="color: var(--red); font-weight: bold;">*</span></span>
+              <input required name="pickupAddress" />
+            </label>
+            <label class="full">
+              <span>目的地 <span style="color: var(--red); font-weight: bold;">*</span></span>
+              <input required name="destinationAddress" />
+            </label>
+            <label>
+              社區據點
+              <select name="communitySite" id="communitySiteSelect"></select>
+            </label>
+            <label>
+              額度/身分備註
+              <input name="quotaNote" placeholder="例如：15460、交通額度備註" />
+            </label>
+            <label class="full">
+              常用目的地
+              <textarea name="destinationsText" rows="3" placeholder="每行一處：據點名稱｜地址；可包含日照、復健、社區據點等不同目的地"></textarea>
+            </label>
+            <label class="full">
+              接送注意事項
+              <textarea name="rideNote" rows="2"></textarea>
+            </label>
+            <label class="full">
+              備註
+              <textarea name="note" rows="3"></textarea>
+            </label>
+            <div class="inline-fields full">
+              <label>
+                今日上車
+                <input name="scheduledPickup" type="time" value="09:00" />
+              </label>
+              <label>
+                今日送達
+                <input name="scheduledDropoff" type="time" value="09:30" />
+              </label>
+              <label>
+                指派司機
+                <select name="driverId" id="caseDriverSelect"></select>
+              </label>
+              <label>
+                接送目的地
+                <input name="tripDestination" placeholder="不填則使用預設目的地" />
+              </label>
+            </div>
+            <label class="check-row full">
+              <input name="createTrip" type="checkbox" checked />
+              <span>同步加入今日接送班表</span>
+            </label>
+            <label class="check-row full" id="createReturnTripRow">
+              <input name="createReturnTrip" id="createReturnTripCheckbox" type="checkbox" />
+              <span style="color: var(--red); font-weight: 800;">同步加入今日回程班表（回回程目的地，即個案上車地址）</span>
+            </label>
+            <div class="inline-fields full" id="caseReturnFields" style="display: none; border-top: 1px dashed rgba(0, 0, 0, 0.1); padding-top: 10px; margin-top: 5px;">
+              <label>
+                今日回程上車
+                <input name="scheduledPickupReturn" type="time" value="16:00" />
+              </label>
+              <label>
+                今日回程送達
+                <input name="scheduledDropoffReturn" type="time" value="16:30" />
+              </label>
+              <label>
+                回程指派司機
+                <select name="driverIdReturn" id="caseDriverSelectReturn"></select>
+              </label>
+            </div>
+            <div class="form-actions full">
+              <button class="primary-btn" type="submit" id="caseSubmitBtn">＋ 新增個案</button>
+              <button class="ghost-btn" type="button" id="caseCancelBtn">清除</button>
+            </div>
+          </form>
+            </div>
+          </div>
+        </section>
+      </div>
+    </template>
+
+    <template id="driversTemplate">
+      <div class="case-workspace" id="driverWorkspace">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">管理司機資料</p>
+              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">airport_shuttle</span>司機名冊</h3>
+            </div>
+            <div class="heading-actions">
+              <span class="count-pill" id="driverCount"></span>
+              <button class="icon-add-btn material-symbols-outlined" id="openDriverFormBtn" type="button" aria-label="新增司機">add</button>
+            </div>
+          </div>
+          <p class="inline-notice" id="driverNotice" hidden></p>
+          <div class="case-list" id="driverList"></div>
+        </section>
+
+        <section class="modal-overlay" id="driverFormPanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">badge</span>
+                <span id="driverFormMode">新增司機</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="driverFormCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body">
+              <form class="case-form" id="driverForm">
+            <input type="hidden" name="id" />
+            <label>
+              司機姓名
+              <input required name="name" />
+            </label>
+            <label>
+              聯絡電話
+              <input required name="phone" inputmode="tel" />
+            </label>
+            <label>
+              身分證字號
+              <input required name="identityNo" autocomplete="off" />
+            </label>
+            <label>
+              車號
+              <input required name="vehicleNo" placeholder="KAA-1032" />
+            </label>
+            <label>
+              快速登入 PIN（6 碼）
+              <input required name="pin" inputmode="numeric" minlength="6" maxlength="6" pattern="[0-9]{6}" placeholder="請輸入 6 位數字" />
+            </label>
+            <label>
+              狀態
+              <select name="active">
+                <option value="true">服務中</option>
+                <option value="false">停用</option>
+              </select>
+            </label>
+            <div class="form-actions full">
+              <button class="primary-btn" type="submit" id="driverSubmitBtn">＋ 新增司機</button>
+              <button class="ghost-btn" type="button" id="driverCancelBtn">清除</button>
+            </div>
+          </form>
+            </div>
+          </div>
+        </section>
+      </div>
+    </template>
+
+    <template id="driverTemplate">
+      <section class="driver-view" id="driverView"></section>
+    </template>
+
+    <template id="coordinatorGateTemplate">
+      <section class="gate-panel">
+        <div class="gate-card">
+          <span class="gate-icon material-symbols-outlined" aria-hidden="true">lock</span>
+          <p class="eyebrow">承辦人限定</p>
+          <h3>請先解鎖個管資料</h3>
+          <p class="subtext">個案資料、承辦人入口、司機管理與版本紀錄只開放承辦人查看與編輯。</p>
+          <form class="gate-form" id="coordinatorGateForm">
+            <label>
+              承辦人密碼
+              <input name="passcode" type="password" inputmode="numeric" autocomplete="current-password" placeholder="請輸入承辦人密碼" />
+            </label>
+            <p class="form-message" id="coordinatorGateMessage"></p>
+            <button class="primary-btn" type="submit">解鎖</button>
+            <button class="ghost-btn" type="button" id="goDriverPortalBtn">前往司機入口</button>
+          </form>
+        </div>
+      </section>
+    </template>
+
+    <template id="settingsTemplate">
+      <section class="work-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">個人偏好</p>
+            <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">text_fields</span>文字大小</h3>
+          </div>
+        </div>
+        <div class="font-size-panel">
+          <label>
+            介面文字大小
+            <input id="fontSizeRange" type="range" min="90" max="125" step="5" />
+          </label>
+          <div class="font-size-actions">
+            <span class="count-pill" id="fontSizeLabel"></span>
+            <button class="ghost-btn" id="fontSizeResetBtn" type="button">恢復預設</button>
+          </div>
+          <p class="subtext">此設定只保存在目前這台裝置與瀏覽器，不會影響其他使用者。</p>
+        </div>
+      </section>
+    </template>
+
+    <template id="releasesTemplate">
+      <section class="work-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">系統版本</p>
+            <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">new_releases</span>版本更新紀錄</h3>
+          </div>
+        </div>
+        <div class="release-list" id="releaseList"></div>
+      </section>
+    </template>
+
+    <template id="schedulesTemplate">
+      <div class="case-workspace" id="scheduleWorkspace">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">管理接送排班</p>
+              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">event_repeat</span>接送排程</h3>
+            </div>
+            <div class="heading-actions" style="display: flex; align-items: center; gap: 8px;">
+              <span class="count-pill" id="scheduleCount"></span>
+              <button class="icon-add-btn material-symbols-outlined" id="importScheduleBtn" type="button" title="匯入排程" aria-label="匯入排程" style="background: var(--brand-soft); color: var(--brand-dark); border: 1px solid rgba(0, 90, 90, 0.14);">upload_file</button>
+              <button class="icon-add-btn material-symbols-outlined" id="openScheduleFormBtn" type="button" aria-label="新增排程">add</button>
+            </div>
+          </div>
+          <div class="schedule-list" id="scheduleList"></div>
+        </section>
+
+        <!-- New schedule modal -->
+        <section class="modal-overlay" id="scheduleFormPanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">event_repeat</span>
+                <span id="scheduleFormMode">新增排程</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="scheduleFormCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body">
+              <form class="case-form" id="scheduleForm">
+                <input type="hidden" name="id" />
+                 <label>
+                  <span>個案 <span style="color: var(--red); font-weight: bold;">*</span></span>
+                  <select name="caseId" id="scheduleCaseSelect"></select>
+                </label>
+                <label>
+                  <span>指派司機 <span style="color: var(--red); font-weight: bold;">*</span></span>
+                  <select name="driverId" id="scheduleDriverSelect"></select>
+                </label>
+                <label>
+                  排程類型
+                  <select name="scheduleType" id="scheduleTypeSelect" disabled>
+                    <option value="single">單次</option>
+                    <option value="weekly">週期</option>
+                  </select>
+                </label>
+                <label>
+                  單次日期
+                  <input name="serviceDate" type="date" />
+                </label>
+                <label>
+                  起始日期
+                  <input name="startDate" type="date" />
+                </label>
+                <label>
+                  結束日期
+                  <input name="endDate" type="date" />
+                </label>
+                <fieldset class="weekday-fieldset full">
+                  <legend>每週星期 <span style="color: var(--red); font-weight: bold;">*</span></legend>
+                  <div class="weekday-grid">
+                    <label><input type="checkbox" name="daysOfWeek" value="0" /> 日</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="1" /> 一</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="2" /> 二</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="3" /> 三</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="4" /> 四</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="5" /> 五</label>
+                    <label><input type="checkbox" name="daysOfWeek" value="6" /> 六</label>
+                  </div>
+                </fieldset>
+                <label>
+                  <span>預定上車 <span style="color: var(--red); font-weight: bold;">*</span></span>
+                  <input name="scheduledPickup" type="time" value="07:00" />
+                </label>
+                <label>
+                  <span>預定送達 <span style="color: var(--red); font-weight: bold;">*</span></span>
+                  <input name="scheduledDropoff" type="time" value="07:30" />
+                </label>
+                <label class="full">
+                  <span>上車地址 <span style="color: var(--red); font-weight: bold;">*</span></span>
+                  <input name="pickupAddress" />
+                </label>
+                <label class="full">
+                  <span>目的地 <span style="color: var(--red); font-weight: bold;">*</span></span>
+                  <input name="destinationAddress" />
+                </label>
+                <label class="full">
+                  服務項目
+                  <input name="purpose" placeholder="日照接送、復健門診、據點活動..." />
+                </label>
+                <label class="check-row full" id="enableReturnTripRow">
+                  <input name="hasReturnTrip" id="hasReturnTripCheckbox" type="checkbox" />
+                  <span style="color: var(--red); font-weight: 800;">啟用回程接送（去目的地接回，即起訖點對調）</span>
+                </label>
+                <div class="inline-fields full" id="scheduleReturnFields" style="display: none; border-top: 1px dashed rgba(0, 0, 0, 0.1); padding-top: 10px; margin-top: 5px;">
+                  <label>
+                    回程預定上車
+                    <input name="scheduledPickupReturn" type="time" value="16:00" />
+                  </label>
+                  <label>
+                    回程預定送達
+                    <input name="scheduledDropoffReturn" type="time" value="16:30" />
+                  </label>
+                  <label>
+                    回程指派司機
+                    <select name="driverIdReturn" id="scheduleDriverSelectReturn"></select>
+                  </label>
+                  <label class="full">
+                    回程服務項目
+                    <input name="purposeReturn" value="回程接送" placeholder="日照接送(回程)、回程接送..." />
+                  </label>
+                </div>
+                <label class="full">
+                  特殊需求
+                  <textarea name="specialRequirements" rows="2" placeholder="輪椅、陪同、須提前通知等"></textarea>
+                </label>
+                <div class="form-actions full">
+                  <button class="primary-btn" type="submit" id="scheduleSubmitBtn">＋ 新增排程</button>
+                  <button class="ghost-btn" type="button" id="scheduleCancelBtn">清除</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- CSV Import Modal -->
+        <section class="modal-overlay" id="csvImportPanel" hidden>
+          <div class="modal-card" style="max-width: 600px; width: 90%;">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">upload_file</span>
+                <span>匯入接送排程</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="csvImportCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+              <p class="subtext" style="margin: 0; line-height: 1.5; color: var(--muted);">
+                您可以透過上傳 CSV 格式的檔案大量匯入接送排程。請下載範本並填寫資料，個案與司機會自動依「姓名」或「編號/車號」進行模糊匹配。
+              </p>
+              
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="secondary-btn" type="button" id="downloadTemplateBtn" style="flex: 1; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                  <span class="material-symbols-outlined">download</span> 下載 CSV 範本
+                </button>
+                <button class="primary-btn" type="button" id="selectCsvFileBtn" style="flex: 1; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                  <span class="material-symbols-outlined">file_open</span> 選擇 CSV 檔案
+                </button>
+                <input type="file" id="csvFileInput" accept=".csv" style="display: none;" />
+              </div>
+              
+              <!-- Preview Section -->
+              <div id="importPreviewContainer" style="display: none; flex-direction: column; gap: 10px;">
+                <h4 style="margin: 10px 0 0 0; color: var(--brand-dark); font-size: 15px; font-weight: 800;">匯入資料預覽 (<span id="importPreviewCount">0</span> 筆)</h4>
+                <div id="importPreviewList" style="max-height: 240px; overflow-y: auto; border: 1px solid rgba(189, 201, 200, 0.58); border-radius: 12px; padding: 10px; background: #f8fafc; display: flex; flex-direction: column; gap: 8px;">
+                  <!-- Preview rows go here -->
+                </div>
+                <div class="form-actions full" style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button class="primary-btn" type="button" id="confirmImportBtn" style="flex: 1; min-height: 44px;">確認匯入</button>
+                  <button class="ghost-btn" type="button" id="cancelImportBtn" style="flex: 1; min-height: 44px;">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Schedule override modal -->
+        <section class="modal-overlay" id="scheduleOverridePanel" hidden>
+          <div class="modal-card">
+            <div class="modal-header">
+              <h3>
+                <span class="section-icon material-symbols-outlined" aria-hidden="true">rule</span>
+                <span id="scheduleOverrideMode">例外變更</span>
+              </h3>
+              <button type="button" class="modal-close-btn material-symbols-outlined" id="scheduleOverrideCloseBtn" aria-label="關閉視窗">close</button>
+            </div>
+            <div class="modal-body">
+              <form class="case-form" id="scheduleOverrideForm">
+                <input type="hidden" name="scheduleId" />
+                <label>
+                  變更日期
+                  <input name="serviceDate" type="date" />
+                </label>
+                <label>
+                  變更司機
+                  <select name="overrideDriverId" id="scheduleOverrideDriverSelect"></select>
+                </label>
+                <label>
+                  新上車時間
+                  <input name="overridePickupTime" type="time" />
+                </label>
+                <label>
+                  新送達時間
+                  <input name="overrideDropoffTime" type="time" />
+                </label>
+                <label class="full">
+                  新目的地
+                  <input name="overrideDestinationAddress" />
+                </label>
+                <label class="full">
+                  新服務項目
+                  <input name="overridePurpose" />
+                </label>
+                <label class="full">
+                  特殊需求/備註
+                  <textarea name="specialRequirements" rows="2"></textarea>
+                </label>
+                <label class="check-row full">
+                  <input name="cancelService" type="checkbox" />
+                  <span>取消此日排程</span>
+                </label>
+                <div class="form-actions full">
+                  <button class="primary-btn" type="submit" id="scheduleOverrideSubmitBtn">＋ 儲存例外</button>
+                  <button class="ghost-btn" type="button" id="scheduleOverrideCancelBtn">清除</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </div>
+    </template>
+
+    <template id="reimbursementsTemplate">
+      <div class="case-workspace" id="reimbursementWorkspace">
+        <section class="work-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">政府申報核銷</p>
+              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">payments</span>核銷月報表匯出</h3>
+            </div>
+            <div class="heading-actions">
+              <span class="count-pill" id="reimbursementCount">0 筆</span>
+            </div>
+          </div>
+          
+          <div class="reimbursement-filter-panel" style="display: flex; align-items: flex-end; gap: 16px; margin-bottom: 24px; padding: 18px; background: var(--surface-container); border-radius: 16px; border: 1px solid var(--line);">
+            <label style="display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 14px;">
+              選擇核銷年月
+              <input type="month" id="reimbursementMonthPicker" style="min-height: 40px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); font-size: 16px; font-weight: 500;" />
+            </label>
+            <button class="primary-btn" id="doExportReimbursementBtn" type="button" style="min-height: 40px; box-shadow: var(--shadow-soft);">
+              <span class="material-symbols-outlined" aria-hidden="true">download</span>
+              匯出核銷報表 (CSV)
+            </button>
+          </div>
+          
+          <div class="case-list" id="reimbursementPreviewList"></div>
+        </section>
+      </div>
+    </template>
+
+    <!-- Trip Detail Modal -->
+    <section class="modal-overlay" id="tripDetailPanel" hidden>
+      <div class="modal-card" style="max-width: 540px;">
+        <div class="modal-header">
+          <h3>
+            <span class="section-icon material-symbols-outlined" aria-hidden="true">assignment_turned_in</span>
+            <span>接送班次詳細資訊</span>
+          </h3>
+          <button type="button" class="modal-close-btn material-symbols-outlined" id="tripDetailCloseBtn" aria-label="關閉視窗">close</button>
+        </div>
+        <div class="modal-body" id="tripDetailBody">
+          <!-- Dynamically filled by app.js -->
+        </div>
+      </div>
+    </section>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

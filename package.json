@@ -1,0 +1,26 @@
+{
+  "name": "1-2-3-4-5-supabase",
+  "version": "1.0.0",
+  "description": "這是一個以長照社區交通車承辦人為核心的單頁應用程式原型。部署到 Vercel 後會優先透過 `/api/state` 連接 Supabase；若本機沒有 API，會自動使用瀏覽器 `localStorage` 保存示範資料。",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mylefun/ltc-community-transport.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mylefun/ltc-community-transport/issues"
+  },
+  "homepage": "https://github.com/mylefun/ltc-community-transport#readme",
+  "dependencies": {
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/ios": "^8.3.4"
+  }
+}
