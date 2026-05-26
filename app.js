@@ -4060,6 +4060,8 @@ function renderDriverWorkspace() {
     renderDriver();
   });
 
+  // 移除舊的監聽器再重新綁定，避免每次重渲染後累積多個 listener
+  view.removeEventListener("click", handleDriverTaskClick);
   view.addEventListener("click", handleDriverTaskClick);
 
   // 啟動地理圍欄持續追蹤
@@ -4120,10 +4122,11 @@ async function handleDriverTaskClick(event) {
     const location = await captureDriverLocation(activeDriverId, trip.id, "pickup");
     if (dataMode === "supabase") {
       try {
-        await apiAction("pickup", { tripId: trip.id, location });
+        await apiAction("pickup", { tripId: trip.id, location, serviceDate: state.serviceDate });
         renderDriverWorkspace();
       } catch (error) {
         dataMessage = `打卡失敗：${error.message}`;
+        addNotification(`接到打卡失敗：${error.message}`, false);
         renderDriverWorkspace();
       }
       return;
@@ -4149,10 +4152,11 @@ async function handleDriverTaskClick(event) {
     const location = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
     if (dataMode === "supabase") {
       try {
-        await apiAction("dropoff", { tripId: trip.id, location });
+        await apiAction("dropoff", { tripId: trip.id, location, serviceDate: state.serviceDate });
         renderDriverWorkspace();
       } catch (error) {
         dataMessage = `打卡失敗：${error.message}`;
+        addNotification(`送達打卡失敗：${error.message}`, false);
         renderDriverWorkspace();
       }
       return;
@@ -4468,7 +4472,7 @@ async function performGeofenceCheckin(trip, eventType) {
     const location = await captureDriverLocation(activeDriverId, trip.id, "pickup");
     if (dataMode === "supabase") {
       try {
-        await apiAction("pickup", { tripId: trip.id, location });
+        await apiAction("pickup", { tripId: trip.id, location, serviceDate: state.serviceDate });
       } catch (error) {
         console.error("[Geofence] 自動打卡失敗（pickup）:", error);
       }
@@ -4493,7 +4497,7 @@ async function performGeofenceCheckin(trip, eventType) {
     const location = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
     if (dataMode === "supabase") {
       try {
-        await apiAction("dropoff", { tripId: trip.id, location });
+        await apiAction("dropoff", { tripId: trip.id, location, serviceDate: state.serviceDate });
       } catch (error) {
         console.error("[Geofence] 自動打卡失敗（dropoff）:", error);
       }
