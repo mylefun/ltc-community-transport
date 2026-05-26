@@ -1,0 +1,17 @@
+{
+  "short_name": "LTC交通車",
+  "name": "LTC社區交通接送系統",
+  "icons": [
+    {
+      "src": "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png",
+      "type": "image/png",
+      "sizes": "1024x1024",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/index.html",
+  "background_color": "#1e293b",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait"
+}
