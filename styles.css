@@ -2319,13 +2319,22 @@ textarea {
   box-shadow: 0 16px 30px rgba(0, 90, 90, 0.2);
 }
 
-.driver-header p,
-.driver-header h3 {
+.driver-header p {
   margin: 0;
+  font-size: calc(14px * var(--user-font-scale));
 }
 
 .driver-header h3 {
-  font-size: 24px;
+  margin: 0;
+  font-size: calc(24px * var(--user-font-scale));
+}
+
+.primary-btn:disabled,
+.secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
 }
 
 .driver-task-list {

@@ -1463,10 +1463,10 @@ function updateNotificationCenter() {
       const itemClass = n.success ? "success" : "failure";
       return `
         <div class="notification-item ${itemClass} ${n.read ? "read" : ""}" data-notification-id="${escapeHTML(n.id)}">
-          <span class="material-symbols-outlined notification-item-icon" aria-hidden="true">${statusIcon}</span>
-          <div class="notification-item-content">
-            <p class="notification-item-text">${escapeHTML(n.text)}</p>
-            <span class="notification-item-time">${timeStr}</span>
+          <span class="material-symbols-outlined status-icon" aria-hidden="true">${statusIcon}</span>
+          <div class="notif-content" style="flex: 1; display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 12px; min-width: 0;">
+            <p class="notif-text" style="font-size: 13px; line-height: 1.4; color: var(--ink); margin: 0; min-width: 0; word-break: break-all;">${escapeHTML(n.text)}</p>
+            <span class="notif-time" style="font-size: 11px; color: var(--muted); font-family: 'Hanken Grotesk', sans-serif; white-space: nowrap; flex-shrink: 0; margin-top: 2px;">${timeStr}</span>
           </div>
         </div>
       `;
@@ -2185,7 +2185,7 @@ function validateSchedulePayload(schedule) {
   }
 
   if (errors.length > 0) {
-    return "💡 請檢查以下必填欄位尚未填寫：\n" + errors.map((err, i) => `${i + 1}. ${err}`).join("\n");
+    return "💡 請檢查以下必填欄位尚未填寫：" + errors.map((err, i) => `${i + 1}. ${err}`).join("、");
   }
 
   return "";
@@ -4384,9 +4384,9 @@ function renderDriverWorkspace() {
     <section class="driver-header">
       <div>
         <p>${escapeHTML(driver.vehicleNo)}</p>
-        <h3>${escapeHTML(driver.name)} 今日接送</h3>
+        <h3>${escapeHTML(driver.name)} 今日接送 <span style="font-size: calc(15px * var(--user-font-scale)); opacity: 0.85; font-weight: normal; margin-left: 6px;">(${state.serviceDate || todayKey()})</span></h3>
       </div>
-      <button class="ghost-btn" type="button" id="driverLogoutBtn">登出</button>
+      <button class="ghost-btn" type="button" id="driverLogoutBtn" style="font-size: calc(14px * var(--user-font-scale));">登出</button>
     </section>
     <section class="driver-task-list">
       ${tasks.length ? tasks.map(renderDriverTask).join("") : '<div class="empty-state">目前沒有指派給你的接送班次。</div>'}
@@ -4438,30 +4438,37 @@ function renderDriverTask(trip) {
           <span class="status-pill ${escapeHTML(status)}">${escapeHTML(getTripStatusLabel(trip))}</span>
         </div>
         
-        <div class="route-timeline" style="display: grid; gap: 8px; margin: 8px 0; padding: 12px 14px; background: var(--surface-strong); border: 1px solid rgba(189, 201, 200, 0.4); border-radius: 14px; font-size: 14px;">
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: var(--brand); font-weight: bold; font-size: 16px; margin-top: 1px;">•</span>
-            <div style="flex: 1;">
-              <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
-              ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; margin-left: 6px;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
+        <div class="route-timeline" style="display: grid; gap: 12px; margin: 8px 0; padding: 12px 14px; background: var(--surface-strong); border: 1px solid rgba(189, 201, 200, 0.4); border-radius: 14px; font-size: 14px;">
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+            <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
+              <span style="color: var(--brand); font-weight: bold; font-size: 16px; margin-top: 1px;">•</span>
+              <div style="flex: 1; min-width: 0;">
+                <span style="font-weight: 800; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
+                ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; display: inline-block; margin-top: 2px;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
+              </div>
             </div>
+            <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled} style="padding: 6px 14px; min-height: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; gap: 4px; box-shadow: none; flex-shrink: 0;" title="已接到個案" aria-label="已接到個案">
+              <span class="material-symbols-outlined" style="font-size: 18px;">accessible_forward</span>
+              <span style="font-size: 13px; font-weight: 800;">上車</span>
+            </button>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: var(--muted); font-weight: bold; font-size: 16px; margin-top: 1px;">▪</span>
-            <div style="flex: 1;">
-              <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
-              ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; margin-left: 6px;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+            <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
+              <span style="color: var(--muted); font-weight: bold; font-size: 16px; margin-top: 1px;">▪</span>
+              <div style="flex: 1; min-width: 0;">
+                <span style="font-weight: 800; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
+                ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; display: inline-block; margin-top: 2px;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
+              </div>
             </div>
+            <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled} style="padding: 6px 14px; min-height: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; gap: 4px; box-shadow: none; flex-shrink: 0;" title="已送達目的地" aria-label="已送達目的地">
+              <span class="material-symbols-outlined" style="font-size: 18px;">check_circle</span>
+              <span style="font-size: 13px; font-weight: 800;">送達</span>
+            </button>
           </div>
+          
         </div>
-      </div>
-      <div class="task-actions" style="margin-top: 10px; display: flex; gap: 20px; justify-content: center;">
-        <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled} style="width: 54px; height: 54px; min-height: 54px; border-radius: 50%; padding: 0; display: inline-flex; align-items: center; justify-content: center;" title="已接到個案" aria-label="已接到個案">
-          <span class="material-symbols-outlined" style="font-size: 28px;">accessible_forward</span>
-        </button>
-        <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled} style="width: 54px; height: 54px; min-height: 54px; border-radius: 50%; padding: 0; display: inline-flex; align-items: center; justify-content: center;" title="已送達目的地" aria-label="已送達目的地">
-          <span class="material-symbols-outlined" style="font-size: 28px;">check_circle</span>
-        </button>
       </div>
     </article>
   `;
@@ -4476,7 +4483,7 @@ async function handleDriverTaskClick(event) {
 
   if (button.dataset.action === "pickup" && !trip.pickupTime) {
     button.disabled = true;
-    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span>';
+    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span><span style="font-size: 13px; font-weight: 800;">定位中</span>';
     const location = await captureDriverLocation(activeDriverId, trip.id, "pickup");
     if (dataMode === "supabase") {
       try {
@@ -4510,7 +4517,7 @@ async function handleDriverTaskClick(event) {
       return;
     }
     button.disabled = true;
-    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span>';
+    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span><span style="font-size: 13px; font-weight: 800;">定位中</span>';
     const location = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
     if (dataMode === "supabase") {
       try {

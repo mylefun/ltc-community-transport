@@ -63,9 +63,21 @@ const communitySites = [
   { name: "新社社區", address: "壯圍鄉新社路 54-3 號", lat: 24.78592, lng: 121.80945 },
   { name: "我們的家", address: "羅東鎮康莊路25號", lat: 24.66986, lng: 121.77691 },
   { name: "五結樂智", address: "五結鄉五結路二段360-1號", lat: 24.68547, lng: 121.79939 },
+  { name: "心安居", address: "壯圍鄉中央路2段265號", lat: 24.757, lng: 121.785 },
 ];
 
 const releaseNotes = [
+  {
+    version: "v0.9.1",
+    date: "2026-05-26",
+    items: [
+      "新增即時接送地圖「全螢幕模式」（放大/縮回切換，並支援 Escape 鍵快速退出）",
+      "新增同目的地個案「鏈式路徑串聯」（A案到B案再到共同目的地，並支援回程鏈式路徑）",
+      "新增 OSRM 真實汽車道路路徑繪製，取代原先直線路徑，並提供本地快取機制",
+      "修復個案定位偏差問題，新增日照據點「心安居」精確坐標，並引入 OSM Nominatim 漸進式地理解析與本地 localStorage 快取",
+      "修復地圖標記文字截斷不完整問題，將目的地與別名字數限制擴展至 20 個字元，完整保留門牌與號碼",
+    ],
+  },
   {
     version: "v0.9.0",
     date: "2026-05-25",
@@ -528,7 +540,7 @@ function getAddressAlias(val, caseIdOrObj = null) {
   }
   
   // 3. Fallback: return a shortened clean version of the address
-  return cleanAddress.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 8);
+  return cleanAddress.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 20);
 }
 
 function getAddressReal(val) {
@@ -1451,10 +1463,10 @@ function updateNotificationCenter() {
       const itemClass = n.success ? "success" : "failure";
       return `
         <div class="notification-item ${itemClass} ${n.read ? "read" : ""}" data-notification-id="${escapeHTML(n.id)}">
-          <span class="material-symbols-outlined notification-item-icon" aria-hidden="true">${statusIcon}</span>
-          <div class="notification-item-content">
-            <p class="notification-item-text">${escapeHTML(n.text)}</p>
-            <span class="notification-item-time">${timeStr}</span>
+          <span class="material-symbols-outlined status-icon" aria-hidden="true">${statusIcon}</span>
+          <div class="notif-content" style="flex: 1; display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 12px; min-width: 0;">
+            <p class="notif-text" style="font-size: 13px; line-height: 1.4; color: var(--ink); margin: 0; min-width: 0; word-break: break-all;">${escapeHTML(n.text)}</p>
+            <span class="notif-time" style="font-size: 11px; color: var(--muted); font-family: 'Hanken Grotesk', sans-serif; white-space: nowrap; flex-shrink: 0; margin-top: 2px;">${timeStr}</span>
           </div>
         </div>
       `;
@@ -2173,7 +2185,7 @@ function validateSchedulePayload(schedule) {
   }
 
   if (errors.length > 0) {
-    return "💡 請檢查以下必填欄位尚未填寫：\n" + errors.map((err, i) => `${i + 1}. ${err}`).join("\n");
+    return "💡 請檢查以下必填欄位尚未填寫：" + errors.map((err, i) => `${i + 1}. ${err}`).join("、");
   }
 
   return "";
@@ -2472,6 +2484,35 @@ let leafletMarkersGroup = null;
 let leafletRoutesGroup = null;
 let hasInitialFit = false;
 
+// Cache for OSRM road routes (key = "lng1,lat1;lng2,lat2;...")
+const osrmRouteCache = new Map();
+
+/**
+ * Fetch a road route from OSRM public API.
+ * Returns an array of [lat, lng] pairs, or null on failure.
+ */
+async function fetchOsrmRoute(waypoints) {
+  // waypoints: array of {lat, lng}
+  if (waypoints.length < 2) return null;
+  const coords = waypoints.map((w) => `${Number(w.lng).toFixed(6)},${Number(w.lat).toFixed(6)}`).join(";");
+  if (osrmRouteCache.has(coords)) return osrmRouteCache.get(coords);
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`OSRM ${res.status}`);
+    const data = await res.json();
+    if (data.code !== "Ok" || !data.routes?.[0]) throw new Error("OSRM no route");
+    // GeoJSON coords are [lng, lat] — convert to [lat, lng] for Leaflet
+    const latLngs = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    osrmRouteCache.set(coords, latLngs);
+    return latLngs;
+  } catch {
+    osrmRouteCache.set(coords, null); // cache failure to avoid retries
+    return null;
+  }
+}
+
 // We hook requestView to reset hasInitialFit so when they switch views and come back, we fit bounds again
 const originalRequestView = requestView;
 requestView = function(view) {
@@ -2540,17 +2581,21 @@ function initOrUpdateLeafletMap() {
   controlsDiv.setAttribute("aria-label", "地圖縮放控制");
   
   const scalePct = Math.round((leafletMapInstance.getZoom() / 12) * 100);
+  const isFullscreen = container.closest(".map-section")?.classList.contains("map-fullscreen");
   controlsDiv.innerHTML = `
     <button class="map-control-btn" type="button" data-map-action="zoom-out" aria-label="縮小地圖">−</button>
     <output class="map-zoom-label" aria-label="目前縮放倍率">${scalePct}%</output>
     <button class="map-control-btn" type="button" data-map-action="zoom-in" aria-label="放大地圖">+</button>
     <button class="map-reset-btn" type="button" data-map-action="reset">重設</button>
+    <button class="map-control-btn map-fullscreen-btn" type="button" data-map-action="fullscreen" aria-label="${isFullscreen ? "縮回地圖" : "全螢幕地圖"}" title="${isFullscreen ? "縮回" : "全螢幕"}">
+      <span class="material-symbols-outlined" style="font-size:18px;">${isFullscreen ? "close_fullscreen" : "open_in_full"}</span>
+    </button>
   `;
   container.appendChild(controlsDiv);
 
   const helpDiv = document.createElement("div");
   helpDiv.className = "map-help";
-  helpDiv.textContent = "拖曳平移 · 滾輪縮放 · 縮小可看全體司機";
+  helpDiv.textContent = "拖曳平移 · 滾輪縮放 · 路徑顯示接送順序";
   container.appendChild(helpDiv);
 
   // Bind controls event listeners
@@ -2563,6 +2608,8 @@ function initOrUpdateLeafletMap() {
       leafletMapInstance.zoomOut();
     } else if (action === "reset") {
       fitAllMapBounds(true);
+    } else if (action === "fullscreen") {
+      toggleMapFullscreen();
     }
   });
 
@@ -2575,13 +2622,43 @@ function initOrUpdateLeafletMap() {
   updateLeafletData();
 }
 
-function updateLeafletData() {
+function toggleMapFullscreen() {
+  const container = document.getElementById("liveMap");
+  if (!container) return;
+  const mapSection = container.closest(".map-section");
+  if (!mapSection) return;
+  const isFullscreen = mapSection.classList.toggle("map-fullscreen");
+  // Update the fullscreen button icon
+  const btn = container.querySelector(".map-fullscreen-btn");
+  if (btn) {
+    const icon = btn.querySelector(".material-symbols-outlined");
+    if (icon) icon.textContent = isFullscreen ? "close_fullscreen" : "open_in_full";
+    btn.setAttribute("aria-label", isFullscreen ? "縮回地圖" : "全螢幕地圖");
+    btn.setAttribute("title", isFullscreen ? "縮回" : "全螢幕");
+  }
+  // Ensure leaflet re-renders at new size
+  setTimeout(() => {
+    if (leafletMapInstance) leafletMapInstance.invalidateSize();
+    fitAllMapBounds(true);
+  }, 320);
+}
+
+async function updateLeafletData() {
   if (!leafletMapInstance) return;
 
   leafletMarkersGroup.clearLayers();
   leafletRoutesGroup.clearLayers();
 
   const allPoints = [];
+
+  // Route color palette per driver index
+  const routePalette = [
+    { active: "#168052", scheduled: "#2764a5", late: "#be3f36" },
+    { active: "#7B3FA0", scheduled: "#9C5BC4", late: "#be3f36" },
+    { active: "#B85C00", scheduled: "#D98B3A", late: "#be3f36" },
+    { active: "#0a6b7c", scheduled: "#1893a4", late: "#be3f36" },
+    { active: "#5A7D10", scheduled: "#7FA820", late: "#be3f36" },
+  ];
 
   // 1. Draw driver markers
   state.drivers.forEach((driver) => {
@@ -2624,77 +2701,249 @@ function updateLeafletData() {
     }
   });
 
-  // 2. Draw trip routes
+  // Helper: resolve a coordinate from trip/case data using real address
+  function resolvePickupCoord(trip, idx, driverLocation, status) {
+    if (idx === 0 && status === "picked_up" && driverLocation) return driverLocation;
+    if (trip.pickupLocation?.lat) return trip.pickupLocation;
+    const person = getCase(trip.caseId);
+    const addr = trip.pickupAddress || person?.pickupAddress || "";
+    if (addr) return resolveCoordinate(addr, trip.caseId, "pickup");
+    return null;
+  }
+
+  function resolveDestCoord(trip) {
+    if (trip.dropoffLocation?.lat) return trip.dropoffLocation;
+    const person = getCase(trip.caseId);
+    const addr = trip.destinationAddress || person?.destinationAddress || "";
+    if (addr) return resolveCoordinate(addr, trip.caseId, "destination");
+    return null;
+  }
+
+  // 2. Draw trip routes - grouped by driver to show A→B→C chained pickup paths
   const activeTrips = todayTrips().filter((trip) => getTripStatus(trip) !== "completed");
+
+  // Pre-fetch/geocode any addresses that are not in cache or communitySites
+  const pendingAddresses = new Set();
   activeTrips.forEach((trip) => {
     const person = getCase(trip.caseId);
+    if (!person) return;
+    const pickupAddr = trip.pickupAddress || person.pickupAddress || "";
+    const destAddr = trip.destinationAddress || person.destinationAddress || "";
+    if (pickupAddr) {
+      const realPickup = getAddressReal(pickupAddr).trim();
+      const hasSite = communitySites.some(s => 
+        (s.name && realPickup.includes(s.name)) || 
+        (s.address && realPickup.includes(s.address)) || 
+        (s.address && s.address.includes(realPickup))
+      );
+      if (!hasSite && !geocodingCache[realPickup]) {
+        pendingAddresses.add(pickupAddr);
+      }
+    }
+    if (destAddr) {
+      const realDest = getAddressReal(destAddr).trim();
+      const hasSite = communitySites.some(s => 
+        (s.name && realDest.includes(s.name)) || 
+        (s.address && realDest.includes(s.address)) || 
+        (s.address && s.address.includes(realDest))
+      );
+      if (!hasSite && !geocodingCache[realDest]) {
+        pendingAddresses.add(destAddr);
+      }
+    }
+  });
+
+  if (pendingAddresses.size > 0) {
+    (async () => {
+      let resolvedAny = false;
+      for (const addr of pendingAddresses) {
+        const res = await geocodeAddress(addr);
+        if (res) resolvedAny = true;
+      }
+      if (resolvedAny) {
+        console.log("Geocoding cache updated, redrawing Leaflet map...");
+        updateLeafletData();
+      }
+    })();
+  }
+
+  // Group trips by driverId, sorted by scheduledPickup time
+  const tripsByDriver = {};
+  activeTrips.forEach((trip) => {
     const driver = getDriver(trip.driverId);
-    if (!person || !driver) return;
+    if (!driver) return;
+    if (!tripsByDriver[driver.id]) tripsByDriver[driver.id] = [];
+    tripsByDriver[driver.id].push(trip);
+  });
+  Object.values(tripsByDriver).forEach((trips) => {
+    trips.sort((a, b) => a.scheduledPickup.localeCompare(b.scheduledPickup));
+  });
 
-    const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
-    const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
-    const driverLocation = state.driverLocations[trip.driverId];
-    const status = getTripStatus(trip);
+  const driverIds = Object.keys(tripsByDriver);
 
-    const start = status === "picked_up" && driverLocation ? driverLocation : pickup;
-    const end = destination;
+  // Build all route groups first, then fetch OSRM routes in parallel
+  const routeGroups = [];
 
-    if (start && start.lat && start.lng && end && end.lat && end.lng) {
-      const startLatLng = [Number(start.lat), Number(start.lng)];
-      const endLatLng = [Number(end.lat), Number(end.lng)];
+  driverIds.forEach((driverId, driverIdx) => {
+    const driver = getDriver(driverId);
+    if (!driver) return;
+    const trips = tripsByDriver[driverId];
+    const palette = routePalette[driverIdx % routePalette.length];
+    const driverLocation = state.driverLocations[driverId];
 
-      allPoints.push(startLatLng);
-      allPoints.push(endLatLng);
+    // Group consecutive trips by destination address
+    const destGroups = [];
+    trips.forEach((trip) => {
+      const destAddr = trip.destinationAddress || getCase(trip.caseId)?.destinationAddress || "";
+      const last = destGroups[destGroups.length - 1];
+      if (last && last.destAddr === destAddr) {
+        last.trips.push(trip);
+      } else {
+        destGroups.push({ destAddr, trips: [trip] });
+      }
+    });
 
-      const strokeClass = status === "picked_up" ? "active" : status === "late" ? "late" : "scheduled";
+    destGroups.forEach((group) => {
+      const groupTrips = group.trips;
+      const waypoints = [];
 
-      // Draw polyline
-      const polyline = L.polyline([startLatLng, endLatLng], {
-        className: `route-line ${strokeClass}`,
-        color: status === "picked_up" ? "#168052" : status === "late" ? "#be3f36" : "#2764a5",
-        weight: status === "picked_up" ? 3.5 : 2.5,
-        dashArray: status === "picked_up" ? null : "4, 4"
+      groupTrips.forEach((trip, idx) => {
+        const person = getCase(trip.caseId);
+        if (!person) return;
+        const status = getTripStatus(trip);
+        const coord = resolvePickupCoord(trip, idx, driverLocation, status);
+        if (coord && coord.lat && coord.lng) {
+          waypoints.push({
+            latLng: [Number(coord.lat), Number(coord.lng)],
+            coord: { lat: Number(coord.lat), lng: Number(coord.lng) },
+            isPickup: true,
+            trip,
+            person,
+            idx,
+          });
+          allPoints.push([Number(coord.lat), Number(coord.lng)]);
+        }
       });
-      polyline.addTo(leafletRoutesGroup);
 
-      // Draw start circle marker
-      const startDot = L.circleMarker(startLatLng, {
-        className: "route-dot start",
-        radius: 5.5,
-        fillColor: "#ffffff",
-        fillOpacity: 1,
-        color: "rgba(23, 33, 43, 0.4)",
-        weight: 1.5
-      });
-      startDot.addTo(leafletRoutesGroup);
+      const lastTrip = groupTrips[groupTrips.length - 1];
+      const destCoord = resolveDestCoord(lastTrip);
+      if (destCoord && destCoord.lat && destCoord.lng) {
+        waypoints.push({
+          latLng: [Number(destCoord.lat), Number(destCoord.lng)],
+          coord: { lat: Number(destCoord.lat), lng: Number(destCoord.lng) },
+          isPickup: false,
+          trip: lastTrip,
+          person: getCase(lastTrip.caseId),
+          idx: groupTrips.length,
+        });
+        allPoints.push([Number(destCoord.lat), Number(destCoord.lng)]);
+      }
 
-      // Draw end circle marker
-      const endDot = L.circleMarker(endLatLng, {
-        className: "route-dot end",
-        radius: 5.5,
-        fillColor: "#fbc02d",
-        fillOpacity: 1,
-        color: "rgba(23, 33, 43, 0.4)",
-        weight: 1.5
-      });
-      endDot.addTo(leafletRoutesGroup);
+      if (waypoints.length < 2) return;
 
-      // Draw midpoint route label
+      const hasActive = groupTrips.some((t) => getTripStatus(t) === "picked_up");
+      const hasLate = groupTrips.some((t) => getTripStatus(t) === "late");
+
+      routeGroups.push({ driver, groupTrips, waypoints, palette, hasActive, hasLate });
+    });
+  });
+
+  // Fetch OSRM road routes for all groups in parallel
+  await Promise.all(
+    routeGroups.map(async (rg) => {
+      rg.roadCoords = await fetchOsrmRoute(rg.waypoints.map((wp) => wp.coord));
+    })
+  );
+
+  // Now draw all route groups
+  routeGroups.forEach(({ driver, groupTrips, waypoints, palette, hasActive, hasLate, roadCoords }) => {
+    const routeColor = hasLate ? palette.late : hasActive ? palette.active : palette.scheduled;
+    const routeWeight = hasActive ? 4 : 3;
+    const routeDash = hasActive ? null : "7, 5";
+
+    // Draw polyline: use OSRM road geometry if available, else straight line
+    const polylineCoords = roadCoords ?? waypoints.map((wp) => wp.latLng);
+    const polyline = L.polyline(polylineCoords, {
+      color: routeColor,
+      weight: routeWeight,
+      dashArray: routeDash,
+      opacity: 0.88,
+      lineJoin: "round",
+      lineCap: "round",
+    });
+    polyline.addTo(leafletRoutesGroup);
+
+    // Draw stop markers
+    waypoints.forEach((wp, wpIdx) => {
+      const isLast = wpIdx === waypoints.length - 1;
+
+      if (isLast) {
+        const endDot = L.circleMarker(wp.latLng, {
+          radius: 8,
+          fillColor: "#fbc02d",
+          fillOpacity: 1,
+          color: "rgba(23,33,43,0.5)",
+          weight: 2,
+        });
+        endDot.addTo(leafletRoutesGroup);
+
+        const destName = (wp.trip.destinationAddress || getCase(wp.trip.caseId)?.destinationAddress || "目的地")
+          .replace(/宜蘭縣|台北市|壯圍鄉|五結鄉|羅東鎮/g, "").substring(0, 20);
+        const destLabelMarker = L.marker(wp.latLng, {
+          icon: L.divIcon({
+            className: "route-label-leaflet",
+            html: `<div class="route-stop-label dest-label">🏁 ${escapeHTML(destName)}</div>`,
+            iconSize: null,
+            iconAnchor: [40, -6],
+          }),
+          interactive: false,
+        });
+        destLabelMarker.addTo(leafletRoutesGroup);
+      } else {
+        const stopColor = (wpIdx === 0 && hasActive) ? routeColor : "#ffffff";
+        const startDot = L.circleMarker(wp.latLng, {
+          radius: 8,
+          fillColor: stopColor,
+          fillOpacity: 1,
+          color: routeColor,
+          weight: 2.5,
+        });
+        startDot.addTo(leafletRoutesGroup);
+
+        const stopLetter = groupTrips.length > 1 ? String.fromCharCode(65 + wpIdx) : "";
+        const stopLabel = `${stopLetter ? stopLetter + ". " : ""}${(wp.person?.name || "").substring(0, 20)}`;
+        const stopMarker = L.marker(wp.latLng, {
+          icon: L.divIcon({
+            className: "route-label-leaflet",
+            html: `<div class="route-stop-label pickup-label" style="border-color:${routeColor};">${escapeHTML(stopLabel)}</div>`,
+            iconSize: null,
+            iconAnchor: [40, -6],
+          }),
+          interactive: false,
+        });
+        stopMarker.addTo(leafletRoutesGroup);
+      }
+    });
+
+    // Mid-segment driver label tag
+    for (let i = 0; i < waypoints.length - 1; i++) {
       const midLatLng = [
-        (Number(start.lat) + Number(end.lat)) / 2,
-        (Number(start.lng) + Number(end.lng)) / 2
+        (waypoints[i].latLng[0] + waypoints[i + 1].latLng[0]) / 2,
+        (waypoints[i].latLng[1] + waypoints[i + 1].latLng[1]) / 2,
       ];
-      const labelText = `${driver.name.slice(0, 1)}-${person.name.slice(0, 1)}`;
-      const routeLabelMarker = L.marker(midLatLng, {
+      const driverInitial = driver.name.slice(0, 1);
+      const segLabel = groupTrips.length > 1
+        ? `${driverInitial}→${String.fromCharCode(65 + (i + 1 < groupTrips.length ? i + 1 : groupTrips.length - 1))}`
+        : driverInitial;
+      L.marker(midLatLng, {
         icon: L.divIcon({
           className: "route-label-leaflet",
-          html: `<span>${escapeHTML(labelText)}</span>`,
+          html: `<span class="route-segment-tag" style="background:${routeColor}">${escapeHTML(segLabel)}</span>`,
           iconSize: null,
-          iconAnchor: [20, 10]
+          iconAnchor: [14, 10],
         }),
-        interactive: false
-      });
-      routeLabelMarker.addTo(leafletRoutesGroup);
+        interactive: false,
+      }).addTo(leafletRoutesGroup);
     }
   });
 
@@ -2723,8 +2972,10 @@ function fitAllMapBounds(force = false) {
   activeTrips.forEach((trip) => {
     const person = getCase(trip.caseId);
     if (!person) return;
-    const pickup = trip.pickupLocation ?? caseCoordinate(trip.caseId, "pickup");
-    const destination = trip.dropoffLocation ?? caseCoordinate(trip.caseId, "destination");
+    const pickupAddr = trip.pickupAddress || person.pickupAddress || "";
+    const destAddr = trip.destinationAddress || person.destinationAddress || "";
+    const pickup = trip.pickupLocation ?? (pickupAddr ? resolveCoordinate(pickupAddr, trip.caseId, "pickup") : null);
+    const destination = trip.dropoffLocation ?? (destAddr ? resolveCoordinate(destAddr, trip.caseId, "destination") : null);
     if (pickup && pickup.lat && pickup.lng) {
       allPoints.push([Number(pickup.lat), Number(pickup.lng)]);
     }
@@ -2869,14 +3120,103 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return Number(Math.max(0.1, dist).toFixed(1));
 }
 
+const geocodingCacheKey = "shuttle_geocoding_cache";
+let geocodingCache = {};
+try {
+  const cached = localStorage.getItem(geocodingCacheKey);
+  if (cached) geocodingCache = JSON.parse(cached);
+} catch (e) {
+  console.error("Failed to load geocoding cache", e);
+}
+
+let activeGeocodingRequests = new Set();
+
+async function geocodeAddress(address) {
+  const cleanAddr = getAddressReal(address).trim();
+  if (!cleanAddr) return null;
+  
+  if (geocodingCache[cleanAddr]) return geocodingCache[cleanAddr];
+  if (activeGeocodingRequests.has(cleanAddr)) return null;
+  activeGeocodingRequests.add(cleanAddr);
+
+  let realAddr = cleanAddr.replace(/巿/g, "市");
+  
+  if ((realAddr.includes("壯圍") || realAddr.includes("五結") || realAddr.includes("羅東") || realAddr.includes("宜蘭")) && !realAddr.includes("宜蘭縣")) {
+    realAddr = "宜蘭縣" + realAddr;
+  }
+
+  let townshipFallback = "";
+  const match = realAddr.match(/^(宜蘭縣|台北市)?(壯圍鄉|五結鄉|羅東鎮|宜蘭市|礁溪鄉|員山鄉|三星鄉|冬山鄉|蘇澳鎮|頭城鎮)/);
+  if (match) {
+    const county = match[1] || "宜蘭縣";
+    const township = match[2];
+    townshipFallback = county + township;
+  }
+
+  const steps = [
+    realAddr,
+    realAddr.replace(/(號)[\d樓\-室\s\/A-Za-z]+.*$/, "$1"),
+    realAddr.replace(/\d+號.*$/, ""),
+    realAddr.replace(/\d+巷.*$/, ""),
+    realAddr.replace(/[\u4e00-\u9fa5]+(村|里)/, ""),
+    townshipFallback
+  ];
+
+  const uniqueSteps = [...new Set(steps.map(s => s.trim()).filter(s => s.length > 3))];
+  let result = null;
+
+  for (const query of uniqueSteps) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'AntigravityShuttleApp/1.0'
+        }
+      });
+      const data = await res.json();
+      if (data && data.length > 0) {
+        result = {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon)
+        };
+        break;
+      }
+    } catch (e) {
+      console.error(`Geocoding error for query "${query}":`, e);
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  activeGeocodingRequests.delete(cleanAddr);
+
+  if (result) {
+    geocodingCache[cleanAddr] = result;
+    try {
+      localStorage.setItem(geocodingCacheKey, JSON.stringify(geocodingCache));
+    } catch (e) {
+      console.error("Failed to save geocoding cache", e);
+    }
+    return result;
+  }
+  return null;
+}
+
 function resolveCoordinate(address, caseId, type) {
-  const realAddress = getAddressReal(address);
+  const realAddress = getAddressReal(address).trim();
+  if (!realAddress) {
+    return { lat: 24.757, lng: 121.785 };
+  }
+
   const site = communitySites.find(s => 
     (s.name && realAddress.includes(s.name)) || 
     (s.address && realAddress.includes(s.address)) || 
     (s.address && s.address.includes(realAddress))
   );
   if (site) return { lat: site.lat, lng: site.lng };
+
+  if (geocodingCache[realAddress]) {
+    return geocodingCache[realAddress];
+  }
 
   const isYilan = /宜蘭|壯圍|五結|羅東/.test(realAddress);
   const seed = [...(realAddress || `${caseId}-${type}`)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -2908,7 +3248,7 @@ function getLocationName(address, isHome, caseId = null) {
   for (const s of communitySites) {
     if (address.includes(s.name)) return s.name;
   }
-  return address.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 6);
+  return address.replace(/宜蘭縣|台北市|中正區|壯圍鄉|五結鄉/g, "").substring(0, 20);
 }
 
 function reimbursementRows(selectedMonth) {
@@ -4044,9 +4384,9 @@ function renderDriverWorkspace() {
     <section class="driver-header">
       <div>
         <p>${escapeHTML(driver.vehicleNo)}</p>
-        <h3>${escapeHTML(driver.name)} 今日接送</h3>
+        <h3>${escapeHTML(driver.name)} 今日接送 <span style="font-size: calc(15px * var(--user-font-scale)); opacity: 0.85; font-weight: normal; margin-left: 6px;">(${state.serviceDate || todayKey()})</span></h3>
       </div>
-      <button class="ghost-btn" type="button" id="driverLogoutBtn">登出</button>
+      <button class="ghost-btn" type="button" id="driverLogoutBtn" style="font-size: calc(14px * var(--user-font-scale));">登出</button>
     </section>
     <section class="driver-task-list">
       ${tasks.length ? tasks.map(renderDriverTask).join("") : '<div class="empty-state">目前沒有指派給你的接送班次。</div>'}
@@ -4073,7 +4413,7 @@ function renderDriverTask(trip) {
   const person = getCase(trip.caseId);
   const status = getTripStatus(trip);
   const pickupDisabled = trip.pickupTime ? "disabled" : "";
-  const dropoffDisabled = !trip.pickupTime || trip.dropoffTime ? "disabled" : "";
+  const dropoffDisabled = trip.dropoffTime ? "disabled" : "";
 
   const pickupAlias = getAddressAlias(trip.pickupAddress || person?.pickupAddress || "", person);
   const pickupReal = getAddressReal(trip.pickupAddress || person?.pickupAddress || "");
@@ -4098,28 +4438,37 @@ function renderDriverTask(trip) {
           <span class="status-pill ${escapeHTML(status)}">${escapeHTML(getTripStatusLabel(trip))}</span>
         </div>
         
-        <div class="route-timeline" style="display: grid; gap: 8px; margin: 8px 0; padding: 12px 14px; background: var(--surface-strong); border: 1px solid rgba(189, 201, 200, 0.4); border-radius: 14px; font-size: 14px;">
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: var(--brand); font-weight: bold; font-size: 16px; margin-top: 1px;">•</span>
-            <div style="flex: 1;">
-              <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
-              ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; margin-left: 6px;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
-              <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 2px;">${escapeHTML(pickupReal)}</span>
+        <div class="route-timeline" style="display: grid; gap: 12px; margin: 8px 0; padding: 12px 14px; background: var(--surface-strong); border: 1px solid rgba(189, 201, 200, 0.4); border-radius: 14px; font-size: 14px;">
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+            <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
+              <span style="color: var(--brand); font-weight: bold; font-size: 16px; margin-top: 1px;">•</span>
+              <div style="flex: 1; min-width: 0;">
+                <span style="font-weight: 800; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
+                ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; display: inline-block; margin-top: 2px;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
+              </div>
             </div>
+            <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled} style="padding: 6px 14px; min-height: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; gap: 4px; box-shadow: none; flex-shrink: 0;" title="已接到個案" aria-label="已接到個案">
+              <span class="material-symbols-outlined" style="font-size: 18px;">accessible_forward</span>
+              <span style="font-size: 13px; font-weight: 800;">上車</span>
+            </button>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: var(--muted); font-weight: bold; font-size: 16px; margin-top: 1px;">▪</span>
-            <div style="flex: 1;">
-              <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
-              ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; margin-left: 6px;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
-              <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 2px;">${escapeHTML(dropoffReal)}</span>
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+            <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
+              <span style="color: var(--muted); font-weight: bold; font-size: 16px; margin-top: 1px;">▪</span>
+              <div style="flex: 1; min-width: 0;">
+                <span style="font-weight: 800; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
+                ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; display: inline-block; margin-top: 2px;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
+              </div>
             </div>
+            <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled} style="padding: 6px 14px; min-height: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; gap: 4px; box-shadow: none; flex-shrink: 0;" title="已送達目的地" aria-label="已送達目的地">
+              <span class="material-symbols-outlined" style="font-size: 18px;">check_circle</span>
+              <span style="font-size: 13px; font-weight: 800;">送達</span>
+            </button>
           </div>
+          
         </div>
-      </div>
-      <div class="task-actions" style="margin-top: 4px;">
-        <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled}>已接到個案</button>
-        <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled}>已送達目的地</button>
       </div>
     </article>
   `;
@@ -4134,7 +4483,7 @@ async function handleDriverTaskClick(event) {
 
   if (button.dataset.action === "pickup" && !trip.pickupTime) {
     button.disabled = true;
-    button.textContent = "定位中";
+    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span><span style="font-size: 13px; font-weight: 800;">定位中</span>';
     const location = await captureDriverLocation(activeDriverId, trip.id, "pickup");
     if (dataMode === "supabase") {
       try {
@@ -4162,9 +4511,13 @@ async function handleDriverTaskClick(event) {
     updateDriverLocation(activeDriverId, trip.id, "pickup", trip.pickupAt, location);
   }
 
-  if (button.dataset.action === "dropoff" && trip.pickupTime && !trip.dropoffTime) {
+  if (button.dataset.action === "dropoff" && !trip.dropoffTime) {
+    if (!trip.pickupTime) {
+      showAutoPickupMakeupModal(trip, button);
+      return;
+    }
     button.disabled = true;
-    button.textContent = "定位中";
+    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span><span style="font-size: 13px; font-weight: 800;">定位中</span>';
     const location = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
     if (dataMode === "supabase") {
       try {
@@ -4194,6 +4547,173 @@ async function handleDriverTaskClick(event) {
 
   saveState();
   renderDriverWorkspace();
+}
+
+function getPlannedDurationMinutes(trip) {
+  if (!trip.scheduledPickup || !trip.scheduledDropoff) return 30; // default to 30 mins
+  const [p1, p2] = trip.scheduledPickup.split(":").map(Number);
+  const [d1, d2] = trip.scheduledDropoff.split(":").map(Number);
+  
+  if (isNaN(p1) || isNaN(p2) || isNaN(d1) || isNaN(d2)) return 30;
+  
+  let duration = (d1 * 60 + d2) - (p1 * 60 + p2);
+  if (duration <= 0) duration = 30; // fallback if invalid range
+  return duration;
+}
+
+async function showAutoPickupMakeupModal(trip, button) {
+  const plannedDuration = getPlannedDurationMinutes(trip);
+  
+  const now = new Date();
+  const currentDropoffTimeStr = localTime(now);
+  const estimatedPickupDate = new Date(now.getTime() - plannedDuration * 60 * 1000);
+  let estimatedPickupTimeStr = localTime(estimatedPickupDate);
+  
+  const modal = document.createElement("div");
+  modal.className = "modal-overlay";
+  modal.id = "autoPickupModal";
+  modal.style.zIndex = "2000";
+  
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 400px; width: 90%; text-align: center; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); border: 1px solid var(--line, #e2e8f0); background: var(--surface, #ffffff);">
+      <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
+        <span class="material-symbols-outlined" style="font-size: 48px; color: var(--brand-dark, #005a5a); margin-bottom: 12px;">warning</span>
+      </div>
+      <div class="modal-body" style="padding-top: 0; display: flex; flex-direction: column; gap: 16px;">
+        <h3 style="margin: 0; color: var(--ink, #1e293b); font-size: 18px; font-weight: 800;">偵測到尚未紀錄上車時間</h3>
+        <p style="margin: 0; color: var(--muted, #64748b); font-size: 14px; line-height: 1.5;">
+          您已抵達目的地，系統已為您自動估算：
+        </p>
+        
+        <div style="background: var(--surface, #f8fafc); border: 1px solid var(--line, #e2e8f0); border-radius: 12px; padding: 16px; text-align: left; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--muted, #64748b); font-size: 14px;">預估上車時間</span>
+            <strong id="autoPickupTimeLabel" style="color: var(--ink, #1e293b); font-size: 16px;">${estimatedPickupTimeStr}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--muted, #64748b); font-size: 14px;">現在送達時間</span>
+            <strong id="autoDropoffTimeLabel" style="color: var(--ink, #1e293b); font-size: 16px; font-weight: 800;">${currentDropoffTimeStr}</strong>
+          </div>
+        </div>
+        
+        <p style="margin: 0; color: var(--brand, #005a5a); font-size: 12px; font-weight: 600;">
+          確認後系統將一鍵自動補齊上下車打卡！
+        </p>
+      </div>
+      <div class="modal-footer" style="padding: 16px; border-top: none; display: flex; flex-direction: column; gap: 8px;">
+        <button class="primary-btn" id="autoPickupConfirmBtn" style="width: 100%; min-height: 44px; font-weight: bold; justify-content: center;" type="button">確認一鍵補卡與送達</button>
+        <button class="ghost-btn" id="autoPickupManualBtn" style="width: 100%; min-height: 44px; color: var(--muted, #64748b); justify-content: center;" type="button">手動修改上車時間</button>
+        <button class="ghost-btn" id="autoPickupCancelBtn" style="width: 100%; min-height: 40px; color: var(--red, #ef4444); justify-content: center;" type="button">取消</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const confirmBtn = modal.querySelector("#autoPickupConfirmBtn");
+  const manualBtn = modal.querySelector("#autoPickupManualBtn");
+  const cancelBtn = modal.querySelector("#autoPickupCancelBtn");
+  const timeLabel = modal.querySelector("#autoPickupTimeLabel");
+  
+  cancelBtn.addEventListener("click", () => {
+    modal.remove();
+  });
+  
+  manualBtn.addEventListener("click", () => {
+    const inputTime = prompt("請輸入上車時間 (格式為 24小時制 HH:MM，如 10:15)：", estimatedPickupTimeStr);
+    if (inputTime === null) return;
+    
+    const trimmed = inputTime.trim();
+    const match = trimmed.match(/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/);
+    if (!match) {
+      alert("時間格式不正確，請輸入如 10:15 的 24 小時制時間。");
+      return;
+    }
+    
+    const formattedHour = String(match[1]).padStart(2, "0");
+    const formattedMinute = String(match[2]).padStart(2, "0");
+    estimatedPickupTimeStr = `${formattedHour}:${formattedMinute}`;
+    timeLabel.textContent = estimatedPickupTimeStr;
+  });
+  
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    manualBtn.disabled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.textContent = "定位與補登中...";
+    
+    const serviceDate = state.serviceDate || todayKey();
+    const pickupLocalIso = `${serviceDate}T${estimatedPickupTimeStr}:00+08:00`;
+    const dropoffLocalIso = `${serviceDate}T${currentDropoffTimeStr}:00+08:00`;
+    
+    const pickupDate = new Date(pickupLocalIso);
+    const dropoffDate = new Date(dropoffLocalIso);
+    
+    const pickupAtIso = isNaN(pickupDate.getTime()) ? new Date(now.getTime() - plannedDuration * 60 * 1000).toISOString() : pickupDate.toISOString();
+    const dropoffAtIso = isNaN(dropoffDate.getTime()) ? now.toISOString() : dropoffDate.toISOString();
+    
+    const pickupLocation = await captureDriverLocation(activeDriverId, trip.id, "pickup");
+    const dropoffLocation = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
+    
+    if (dataMode === "supabase") {
+      try {
+        await apiAction("pickup", { 
+          tripId: trip.id, 
+          location: pickupLocation, 
+          serviceDate: state.serviceDate,
+          occurredAt: pickupAtIso
+        });
+        
+        await apiAction("dropoff", { 
+          tripId: trip.id, 
+          location: dropoffLocation, 
+          serviceDate: state.serviceDate,
+          occurredAt: dropoffAtIso
+        });
+        
+        addNotification(`已成功一鍵補登接送與送達！`, true);
+      } catch (error) {
+        dataMessage = `一鍵補登失敗：${error.message}`;
+        addNotification(`一鍵補登失敗：${error.message}`, false);
+      }
+    } else {
+      trip.pickupTime = estimatedPickupTimeStr;
+      trip.pickupAt = pickupAtIso;
+      trip.pickupLocation = pickupLocation;
+      trip.status = "picked_up";
+      
+      state.events.push({
+        id: uid("event"),
+        tripId: trip.id,
+        driverId: activeDriverId,
+        type: "pickup",
+        occurredAt: pickupAtIso,
+        location: pickupLocation,
+      });
+      updateDriverLocation(activeDriverId, trip.id, "pickup", pickupAtIso, pickupLocation);
+      
+      trip.dropoffTime = currentDropoffTimeStr;
+      trip.dropoffAt = dropoffAtIso;
+      trip.dropoffLocation = dropoffLocation;
+      trip.status = "completed";
+      
+      state.events.push({
+        id: uid("event"),
+        tripId: trip.id,
+        driverId: activeDriverId,
+        type: "dropoff",
+        occurredAt: dropoffAtIso,
+        location: dropoffLocation,
+      });
+      updateDriverLocation(activeDriverId, trip.id, "dropoff", dropoffAtIso, dropoffLocation);
+      
+      saveState();
+      addNotification(`已成功一鍵補登接送與送達 (本機示範模式)！`, true);
+    }
+    
+    modal.remove();
+    renderDriverWorkspace();
+  });
 }
 
 function captureDriverLocation(driverId, tripId, eventType) {
@@ -5174,6 +5694,15 @@ async function init() {
   setupPullToRefresh();
   updateClock();
   setInterval(updateClock, 15_000);
+
+  // Escape key exits fullscreen map
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const mapSection = document.querySelector(".map-section.map-fullscreen");
+      if (mapSection) toggleMapFullscreen();
+    }
+  });
+
   try {
     await loadRemoteState();
   } catch (error) {
