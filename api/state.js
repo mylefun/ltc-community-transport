@@ -95,8 +95,13 @@ async function supabase(path, options = {}) {
     throw new Error(`Supabase ${response.status}: ${detail}`);
   }
 
+  // Supabase returns 204 for DELETE or when Prefer: return=minimal is used,
+  // but POST with return=minimal may return 201 with empty body.
+  // Safely handle any empty-body response to avoid "Unexpected end of JSON input".
   if (response.status === 204) return null;
-  return response.json();
+  const text = await response.text();
+  if (!text) return null;
+  return JSON.parse(text);
 }
 
 async function rpc(name, body) {
