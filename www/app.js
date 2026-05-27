@@ -315,6 +315,7 @@ let geofenceWatchId = null;        // watchPosition 的 ID，登出時清除
 let geofenceAlerted = new Set();   // 已觸發通知的 tripId+type key，避免重複觸發
 let geofenceCountdownTimer = null; // 倒數計時器
 let geofencePendingAction = null;  // 待確認的打卡動作 { trip, type, confirmFn }
+let currentDriverGps = null;       // 司機當前 GPS 位置 { lat, lng, accuracy, timestamp }
 
 
 let state = normalizeState(loadState());
@@ -4388,6 +4389,10 @@ function renderDriverWorkspace() {
       </div>
       <button class="ghost-btn" type="button" id="driverLogoutBtn" style="font-size: calc(14px * var(--user-font-scale));">登出</button>
     </section>
+    
+    <!-- GPS 診斷與模擬狀態卡片 -->
+    ${renderGpsStatusCard()}
+
     <section class="driver-task-list">
       ${tasks.length ? tasks.map(renderDriverTask).join("") : '<div class="empty-state">目前沒有指派給你的接送班次。</div>'}
     </section>
@@ -4400,6 +4405,17 @@ function renderDriverWorkspace() {
     selectedLoginDriverId = "";
     renderDriver();
   });
+
+  // 綁定 GPS 診斷卡片的事件監聽器
+  const refreshBtn = document.getElementById("gpsRefreshBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", triggerGpsManualUpdate);
+  }
+
+  // 如果已經有全域 currentDriverGps 定位快取，立即將定位渲染到卡片中，讓司機有連貫感
+  if (currentDriverGps) {
+    updateGpsStatusCardDom(currentDriverGps.lat, currentDriverGps.lng, currentDriverGps.accuracy);
+  }
 
   // 移除舊的監聽器再重新綁定，避免每次重渲染後累積多個 listener
   view.removeEventListener("click", handleDriverTaskClick);
@@ -4825,22 +4841,266 @@ function haversineDistanceM(lat1, lon1, lat2, lon2) {
 }
 
 /**
+ * 預先背景解析司機今日行程之真實座標
+ */
+async function preloadDriverTripCoordinates(driverId) {
+  if (!driverId) return;
+  console.log(`[Geofence] Start preloading coordinates for driver ${driverId}`);
+  const myTrips = todayTrips().filter((trip) => trip.driverId === driverId && getTripStatus(trip) !== "completed");
+  
+  for (const trip of myTrips) {
+    const person = getCase(trip.caseId);
+    if (!person) continue;
+    const pickupAddr = trip.pickupAddress || person.pickupAddress || "";
+    const destAddr = trip.destinationAddress || person.destinationAddress || "";
+    
+    if (pickupAddr) {
+      const realPickup = getAddressReal(pickupAddr).trim();
+      if (realPickup && !communitySites.some(s => realPickup.includes(s.name) || realPickup.includes(s.address)) && !geocodingCache[realPickup]) {
+        console.log(`[Geofence] Geocoding pickup address: ${pickupAddr}`);
+        await geocodeAddress(pickupAddr);
+      }
+    }
+    if (destAddr) {
+      const realDest = getAddressReal(destAddr).trim();
+      if (realDest && !communitySites.some(s => realDest.includes(s.name) || realDest.includes(s.address)) && !geocodingCache[realDest]) {
+        console.log(`[Geofence] Geocoding destination address: ${destAddr}`);
+        await geocodeAddress(destAddr);
+      }
+    }
+  }
+  console.log(`[Geofence] Finished preloading coordinates for driver ${driverId}`);
+  
+  if (currentDriverGps) {
+    updateGpsStatusCardDom(currentDriverGps.lat, currentDriverGps.lng, currentDriverGps.accuracy);
+    checkGeofenceTriggers(currentDriverGps.lat, currentDriverGps.lng, driverId);
+  }
+}
+
+/**
+ * 繪製 GPS 定位狀態與診斷卡片 HTML
+ */
+function renderGpsStatusCard() {
+  const driver = getDriver(activeDriverId);
+  if (!driver) return "";
+
+  return `
+    <div class="gps-status-card" style="margin: 16px 0; padding: 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-soft);">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="gps-status-dot pulse" id="gpsStatusDot" style="width: 10px; height: 10px; border-radius: 50%; background: #e2e8f0; display: inline-block;"></span>
+          <strong style="font-size: 14px; color: var(--ink);">GPS 自動定位服務</strong>
+        </div>
+        <span id="gpsAccuracyLabel" style="font-size: 12px; color: var(--muted); font-weight: bold;">等待定位中...</span>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; border-top: 1px dashed var(--line); padding-top: 12px;">
+        <div>
+          <span style="color: var(--muted); display: block; margin-bottom: 2px;">目前經緯度</span>
+          <span id="gpsCoordsText" style="font-family: monospace; font-weight: 800; color: var(--ink);">-</span>
+        </div>
+        <div>
+          <span style="color: var(--muted); display: block; margin-bottom: 2px;">下個目標圍欄</span>
+          <span id="gpsTargetName" style="font-weight: 800; color: var(--brand-dark); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">無進行中行程</span>
+        </div>
+        <div style="grid-column: span 2; display: flex; align-items: center; justify-content: space-between; background: var(--brand-soft); padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(0,90,90,0.06);">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined" style="font-size: 16px; color: var(--brand);">near_me</span>
+            <span style="color: var(--brand-dark); font-weight: 800;" id="gpsTargetDistanceText">距離目標：- 公尺</span>
+          </div>
+          <span id="gpsTargetTypeLabel" class="status-pill" style="font-size: 10px; padding: 2px 6px; font-weight: bold; background: rgba(0,0,0,0.05); color: var(--muted); height: auto; border: none;"></span>
+        </div>
+      </div>
+      
+      <div style="display: flex; gap: 8px; margin-top: 4px;">
+        <button type="button" class="secondary-btn" id="gpsRefreshBtn" style="flex: 1; padding: 6px; font-size: 12px; min-height: 32px; height: 32px; justify-content: center; border-radius: 8px; box-shadow: none;">
+          <span class="material-symbols-outlined" style="font-size: 16px;">refresh</span> 重新定位
+        </button>
+        <button type="button" class="primary-btn" id="gpsSimulateBtn" style="flex: 1; padding: 6px; font-size: 12px; min-height: 32px; height: 32px; justify-content: center; border-radius: 8px; box-shadow: none;" disabled>
+          <span class="material-symbols-outlined" style="font-size: 16px;">gps_fixed</span> 模擬抵達圍欄
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * 局部更新 GPS 與地理圍欄狀態卡片 DOM 元素（以極佳效能局部更新，不干擾司機卡片表單與按鈕）
+ */
+function updateGpsStatusCardDom(lat, lng, accuracy) {
+  const dot = document.getElementById("gpsStatusDot");
+  const accuracyLabel = document.getElementById("gpsAccuracyLabel");
+  const coordsText = document.getElementById("gpsCoordsText");
+  const targetName = document.getElementById("gpsTargetName");
+  const targetDistanceText = document.getElementById("gpsTargetDistanceText");
+  const targetTypeLabel = document.getElementById("gpsTargetTypeLabel");
+  const simulateBtn = document.getElementById("gpsSimulateBtn");
+
+  if (!dot) return;
+
+  if (accuracy <= 20) {
+    dot.style.background = "#10b981";
+    dot.className = "gps-status-dot pulse active-green";
+    accuracyLabel.textContent = `精準定位 (±${Math.round(accuracy)}m)`;
+    accuracyLabel.style.color = "#10b981";
+  } else if (accuracy <= 200) {
+    dot.style.background = "#f59e0b";
+    dot.className = "gps-status-dot pulse active-orange";
+    accuracyLabel.textContent = `一般定位 (±${Math.round(accuracy)}m)`;
+    accuracyLabel.style.color = "#f59e0b";
+  } else {
+    dot.style.background = "#ef4444";
+    dot.className = "gps-status-dot pulse active-red";
+    accuracyLabel.textContent = `訊號不佳 (±${Math.round(accuracy)}m)`;
+    accuracyLabel.style.color = "#ef4444";
+  }
+
+  coordsText.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+  if (!activeDriverId) return;
+  const myTrips = todayTrips().filter((trip) => trip.driverId === activeDriverId && getTripStatus(trip) !== "completed");
+  
+  let targetAddress = "";
+  let targetLabel = "";
+  let tripTarget = null;
+  let targetEventType = "";
+
+  for (const trip of myTrips) {
+    const person = getCase(trip.caseId);
+    const tripStatus = getTripStatus(trip);
+
+    if (tripStatus === "scheduled" || tripStatus === "late") {
+      if (!trip.pickupTime) {
+        targetAddress = trip.pickupAddress || person?.pickupAddress || "";
+        targetLabel = getAddressAlias(targetAddress, person) + " (上車)";
+        tripTarget = trip;
+        targetEventType = "pickup";
+        break;
+      }
+    } else if (tripStatus === "picked_up") {
+      if (!trip.dropoffTime) {
+        targetAddress = trip.destinationAddress || person?.destinationAddress || "";
+        targetLabel = getAddressAlias(targetAddress, person) + " (送達)";
+        tripTarget = trip;
+        targetEventType = "dropoff";
+        break;
+      }
+    }
+  }
+
+  if (targetAddress && tripTarget) {
+    targetName.textContent = targetLabel;
+    const coord = resolveGeofenceCoord(targetAddress);
+    
+    if (coord) {
+      if (coord.estimated) {
+        targetTypeLabel.textContent = "估算座標";
+        targetTypeLabel.style.background = "rgba(245, 158, 11, 0.1)";
+        targetTypeLabel.style.color = "#d97706";
+      } else {
+        targetTypeLabel.textContent = "精確座標";
+        targetTypeLabel.style.background = "rgba(16, 185, 129, 0.1)";
+        targetTypeLabel.style.color = "#059669";
+      }
+
+      const distanceM = haversineDistanceM(lat, lng, coord.lat, coord.lng);
+      targetDistanceText.textContent = `距離目標：${Math.round(distanceM)} 公尺`;
+      
+      simulateBtn.disabled = false;
+      
+      const newSimulateBtn = simulateBtn.cloneNode(true);
+      simulateBtn.replaceWith(newSimulateBtn);
+      newSimulateBtn.addEventListener("click", () => {
+        console.log(`[Geofence] Simulating arrival at: ${coord.lat}, ${coord.lng}`);
+        currentDriverGps = { lat: coord.lat, lng: coord.lng, accuracy: 10, timestamp: Date.now() };
+        updateGpsStatusCardDom(coord.lat, coord.lng, 10);
+        checkGeofenceTriggers(coord.lat, coord.lng, activeDriverId);
+        addNotification(`模擬抵達成功：已定位至 ${targetLabel} 座標`, true);
+      });
+    } else {
+      targetTypeLabel.textContent = "無法解析";
+      targetTypeLabel.style.background = "rgba(239, 68, 68, 0.1)";
+      targetTypeLabel.style.color = "#ef4444";
+      targetDistanceText.textContent = "距離目標：無法計算";
+      simulateBtn.disabled = true;
+    }
+  } else {
+    targetName.textContent = "無進行中行程";
+    targetDistanceText.textContent = "距離目標：- 公尺";
+    targetTypeLabel.textContent = "";
+    simulateBtn.disabled = true;
+  }
+}
+
+/**
+ * 手動更新高精度 GPS 位置
+ */
+function triggerGpsManualUpdate() {
+  const refreshBtn = document.getElementById("gpsRefreshBtn");
+  if (!refreshBtn) return;
+  
+  refreshBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size: 16px;">sync</span> 定位中...';
+  refreshBtn.disabled = true;
+  
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude: lat, longitude: lng, accuracy } = position.coords;
+        currentDriverGps = { lat, lng, accuracy, timestamp: Date.now() };
+        
+        updateGpsStatusCardDom(lat, lng, accuracy);
+        checkGeofenceTriggers(lat, lng, activeDriverId);
+        
+        refreshBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">refresh</span> 重新定位';
+        refreshBtn.disabled = false;
+        addNotification("GPS 定位更新成功！", true);
+      },
+      (error) => {
+        refreshBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">refresh</span> 重新定位';
+        refreshBtn.disabled = false;
+        addNotification(`定位更新失敗：${error.message}`, false);
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  } else {
+    refreshBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">refresh</span> 重新定位';
+    refreshBtn.disabled = false;
+    addNotification("瀏覽器不支援 GPS 定位", false);
+  }
+}
+
+/**
  * 啟動 GPS 持續追蹤，司機登入時呼叫
  */
 function startGeofenceWatcher(driverId) {
   if (!navigator.geolocation) return; // 瀏覽器不支援，靜默降級
   if (geofenceWatchId !== null) return; // 已在追蹤中，避免重複啟動
 
+  // 背景非同步預先解析所有地址座標
+  preloadDriverTripCoordinates(driverId);
+
   geofenceWatchId = navigator.geolocation.watchPosition(
     (position) => {
       const { latitude: lat, longitude: lng, accuracy } = position.coords;
+      currentDriverGps = { lat, lng, accuracy, timestamp: Date.now() };
+      
+      // 更新狀態診斷卡片
+      updateGpsStatusCardDom(lat, lng, accuracy);
+      
       // GPS 精度不足（>200m）時跳過，避免誤觸發
       if (accuracy > 200) return;
       checkGeofenceTriggers(lat, lng, driverId);
     },
     (error) => {
-      // 定位失敗（權限拒絕等）：靜默忽略，手動按鈕仍可使用
       console.warn("[Geofence] GPS error:", error.message);
+      const dot = document.getElementById("gpsStatusDot");
+      const label = document.getElementById("gpsAccuracyLabel");
+      if (dot && label) {
+        dot.style.background = "#ef4444";
+        dot.className = "gps-status-dot pulse active-red";
+        label.textContent = `定位失敗: ${error.message}`;
+        label.style.color = "#ef4444";
+      }
     },
     {
       enableHighAccuracy: true,
