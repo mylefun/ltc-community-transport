@@ -4413,7 +4413,7 @@ function renderDriverTask(trip) {
   const person = getCase(trip.caseId);
   const status = getTripStatus(trip);
   const pickupDisabled = trip.pickupTime ? "disabled" : "";
-  const dropoffDisabled = !trip.pickupTime || trip.dropoffTime ? "disabled" : "";
+  const dropoffDisabled = trip.dropoffTime ? "disabled" : "";
 
   const pickupAlias = getAddressAlias(trip.pickupAddress || person?.pickupAddress || "", person);
   const pickupReal = getAddressReal(trip.pickupAddress || person?.pickupAddress || "");
@@ -4444,7 +4444,6 @@ function renderDriverTask(trip) {
             <div style="flex: 1;">
               <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
               ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; margin-left: 6px;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
-              <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 2px;">${escapeHTML(pickupReal)}</span>
             </div>
           </div>
           <div style="display: flex; align-items: flex-start; gap: 8px;">
@@ -4452,14 +4451,17 @@ function renderDriverTask(trip) {
             <div style="flex: 1;">
               <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
               ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; margin-left: 6px;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
-              <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 2px;">${escapeHTML(dropoffReal)}</span>
             </div>
           </div>
         </div>
       </div>
-      <div class="task-actions" style="margin-top: 4px;">
-        <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled}>已接到個案</button>
-        <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled}>已送達目的地</button>
+      <div class="task-actions" style="margin-top: 10px; display: flex; gap: 20px; justify-content: center;">
+        <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled} style="width: 54px; height: 54px; min-height: 54px; border-radius: 50%; padding: 0; display: inline-flex; align-items: center; justify-content: center;" title="已接到個案" aria-label="已接到個案">
+          <span class="material-symbols-outlined" style="font-size: 28px;">accessible_forward</span>
+        </button>
+        <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled} style="width: 54px; height: 54px; min-height: 54px; border-radius: 50%; padding: 0; display: inline-flex; align-items: center; justify-content: center;" title="已送達目的地" aria-label="已送達目的地">
+          <span class="material-symbols-outlined" style="font-size: 28px;">check_circle</span>
+        </button>
       </div>
     </article>
   `;
@@ -4474,7 +4476,7 @@ async function handleDriverTaskClick(event) {
 
   if (button.dataset.action === "pickup" && !trip.pickupTime) {
     button.disabled = true;
-    button.textContent = "定位中";
+    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span>';
     const location = await captureDriverLocation(activeDriverId, trip.id, "pickup");
     if (dataMode === "supabase") {
       try {
@@ -4502,9 +4504,13 @@ async function handleDriverTaskClick(event) {
     updateDriverLocation(activeDriverId, trip.id, "pickup", trip.pickupAt, location);
   }
 
-  if (button.dataset.action === "dropoff" && trip.pickupTime && !trip.dropoffTime) {
+  if (button.dataset.action === "dropoff" && !trip.dropoffTime) {
+    if (!trip.pickupTime) {
+      showAutoPickupMakeupModal(trip, button);
+      return;
+    }
     button.disabled = true;
-    button.textContent = "定位中";
+    button.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span>';
     const location = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
     if (dataMode === "supabase") {
       try {
@@ -4534,6 +4540,173 @@ async function handleDriverTaskClick(event) {
 
   saveState();
   renderDriverWorkspace();
+}
+
+function getPlannedDurationMinutes(trip) {
+  if (!trip.scheduledPickup || !trip.scheduledDropoff) return 30; // default to 30 mins
+  const [p1, p2] = trip.scheduledPickup.split(":").map(Number);
+  const [d1, d2] = trip.scheduledDropoff.split(":").map(Number);
+  
+  if (isNaN(p1) || isNaN(p2) || isNaN(d1) || isNaN(d2)) return 30;
+  
+  let duration = (d1 * 60 + d2) - (p1 * 60 + p2);
+  if (duration <= 0) duration = 30; // fallback if invalid range
+  return duration;
+}
+
+async function showAutoPickupMakeupModal(trip, button) {
+  const plannedDuration = getPlannedDurationMinutes(trip);
+  
+  const now = new Date();
+  const currentDropoffTimeStr = localTime(now);
+  const estimatedPickupDate = new Date(now.getTime() - plannedDuration * 60 * 1000);
+  let estimatedPickupTimeStr = localTime(estimatedPickupDate);
+  
+  const modal = document.createElement("div");
+  modal.className = "modal-overlay";
+  modal.id = "autoPickupModal";
+  modal.style.zIndex = "2000";
+  
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 400px; width: 90%; text-align: center; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); border: 1px solid var(--line, #e2e8f0); background: var(--surface, #ffffff);">
+      <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
+        <span class="material-symbols-outlined" style="font-size: 48px; color: var(--brand-dark, #005a5a); margin-bottom: 12px;">warning</span>
+      </div>
+      <div class="modal-body" style="padding-top: 0; display: flex; flex-direction: column; gap: 16px;">
+        <h3 style="margin: 0; color: var(--ink, #1e293b); font-size: 18px; font-weight: 800;">偵測到尚未紀錄上車時間</h3>
+        <p style="margin: 0; color: var(--muted, #64748b); font-size: 14px; line-height: 1.5;">
+          您已抵達目的地，系統已為您自動估算：
+        </p>
+        
+        <div style="background: var(--surface, #f8fafc); border: 1px solid var(--line, #e2e8f0); border-radius: 12px; padding: 16px; text-align: left; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--muted, #64748b); font-size: 14px;">預估上車時間</span>
+            <strong id="autoPickupTimeLabel" style="color: var(--ink, #1e293b); font-size: 16px;">${estimatedPickupTimeStr}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--muted, #64748b); font-size: 14px;">現在送達時間</span>
+            <strong id="autoDropoffTimeLabel" style="color: var(--ink, #1e293b); font-size: 16px; font-weight: 800;">${currentDropoffTimeStr}</strong>
+          </div>
+        </div>
+        
+        <p style="margin: 0; color: var(--brand, #005a5a); font-size: 12px; font-weight: 600;">
+          確認後系統將一鍵自動補齊上下車打卡！
+        </p>
+      </div>
+      <div class="modal-footer" style="padding: 16px; border-top: none; display: flex; flex-direction: column; gap: 8px;">
+        <button class="primary-btn" id="autoPickupConfirmBtn" style="width: 100%; min-height: 44px; font-weight: bold; justify-content: center;" type="button">確認一鍵補卡與送達</button>
+        <button class="ghost-btn" id="autoPickupManualBtn" style="width: 100%; min-height: 44px; color: var(--muted, #64748b); justify-content: center;" type="button">手動修改上車時間</button>
+        <button class="ghost-btn" id="autoPickupCancelBtn" style="width: 100%; min-height: 40px; color: var(--red, #ef4444); justify-content: center;" type="button">取消</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  const confirmBtn = modal.querySelector("#autoPickupConfirmBtn");
+  const manualBtn = modal.querySelector("#autoPickupManualBtn");
+  const cancelBtn = modal.querySelector("#autoPickupCancelBtn");
+  const timeLabel = modal.querySelector("#autoPickupTimeLabel");
+  
+  cancelBtn.addEventListener("click", () => {
+    modal.remove();
+  });
+  
+  manualBtn.addEventListener("click", () => {
+    const inputTime = prompt("請輸入上車時間 (格式為 24小時制 HH:MM，如 10:15)：", estimatedPickupTimeStr);
+    if (inputTime === null) return;
+    
+    const trimmed = inputTime.trim();
+    const match = trimmed.match(/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/);
+    if (!match) {
+      alert("時間格式不正確，請輸入如 10:15 的 24 小時制時間。");
+      return;
+    }
+    
+    const formattedHour = String(match[1]).padStart(2, "0");
+    const formattedMinute = String(match[2]).padStart(2, "0");
+    estimatedPickupTimeStr = `${formattedHour}:${formattedMinute}`;
+    timeLabel.textContent = estimatedPickupTimeStr;
+  });
+  
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    manualBtn.disabled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.textContent = "定位與補登中...";
+    
+    const serviceDate = state.serviceDate || todayKey();
+    const pickupLocalIso = `${serviceDate}T${estimatedPickupTimeStr}:00+08:00`;
+    const dropoffLocalIso = `${serviceDate}T${currentDropoffTimeStr}:00+08:00`;
+    
+    const pickupDate = new Date(pickupLocalIso);
+    const dropoffDate = new Date(dropoffLocalIso);
+    
+    const pickupAtIso = isNaN(pickupDate.getTime()) ? new Date(now.getTime() - plannedDuration * 60 * 1000).toISOString() : pickupDate.toISOString();
+    const dropoffAtIso = isNaN(dropoffDate.getTime()) ? now.toISOString() : dropoffDate.toISOString();
+    
+    const pickupLocation = await captureDriverLocation(activeDriverId, trip.id, "pickup");
+    const dropoffLocation = await captureDriverLocation(activeDriverId, trip.id, "dropoff");
+    
+    if (dataMode === "supabase") {
+      try {
+        await apiAction("pickup", { 
+          tripId: trip.id, 
+          location: pickupLocation, 
+          serviceDate: state.serviceDate,
+          occurredAt: pickupAtIso
+        });
+        
+        await apiAction("dropoff", { 
+          tripId: trip.id, 
+          location: dropoffLocation, 
+          serviceDate: state.serviceDate,
+          occurredAt: dropoffAtIso
+        });
+        
+        addNotification(`已成功一鍵補登接送與送達！`, true);
+      } catch (error) {
+        dataMessage = `一鍵補登失敗：${error.message}`;
+        addNotification(`一鍵補登失敗：${error.message}`, false);
+      }
+    } else {
+      trip.pickupTime = estimatedPickupTimeStr;
+      trip.pickupAt = pickupAtIso;
+      trip.pickupLocation = pickupLocation;
+      trip.status = "picked_up";
+      
+      state.events.push({
+        id: uid("event"),
+        tripId: trip.id,
+        driverId: activeDriverId,
+        type: "pickup",
+        occurredAt: pickupAtIso,
+        location: pickupLocation,
+      });
+      updateDriverLocation(activeDriverId, trip.id, "pickup", pickupAtIso, pickupLocation);
+      
+      trip.dropoffTime = currentDropoffTimeStr;
+      trip.dropoffAt = dropoffAtIso;
+      trip.dropoffLocation = dropoffLocation;
+      trip.status = "completed";
+      
+      state.events.push({
+        id: uid("event"),
+        tripId: trip.id,
+        driverId: activeDriverId,
+        type: "dropoff",
+        occurredAt: dropoffAtIso,
+        location: dropoffLocation,
+      });
+      updateDriverLocation(activeDriverId, trip.id, "dropoff", dropoffAtIso, dropoffLocation);
+      
+      saveState();
+      addNotification(`已成功一鍵補登接送與送達 (本機示範模式)！`, true);
+    }
+    
+    modal.remove();
+    renderDriverWorkspace();
+  });
 }
 
 function captureDriverLocation(driverId, tripId, eventType) {

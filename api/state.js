@@ -971,7 +971,7 @@ async function markRideEvent(type, payload) {
     throw new Error("請先紀錄接到個案時間");
   }
 
-  const occurredAt = new Date().toISOString();
+  const occurredAt = payload.occurredAt || new Date().toISOString();
   const location = payload.location || {};
   const patch =
     type === "pickup"
