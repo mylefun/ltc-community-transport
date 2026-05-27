@@ -312,13 +312,14 @@ saveState();
 
 
 function todayKey(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
+  const taipeiTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  return taipeiTime.toISOString().slice(0, 10);
 }
 
 function localTime(date = new Date()) {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const taipeiTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const hours = String(taipeiTime.getUTCHours()).padStart(2, "0");
+  const minutes = String(taipeiTime.getUTCMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
 }
 
@@ -4073,35 +4074,50 @@ function renderDriverTask(trip) {
   const status = getTripStatus(trip);
   const pickupDisabled = trip.pickupTime ? "disabled" : "";
   const dropoffDisabled = !trip.pickupTime || trip.dropoffTime ? "disabled" : "";
-  const latestLocation = trip.dropoffLocation ?? trip.pickupLocation;
+
+  const pickupAlias = getAddressAlias(trip.pickupAddress || person?.pickupAddress || "", person);
+  const pickupReal = getAddressReal(trip.pickupAddress || person?.pickupAddress || "");
+  const dropoffAlias = getAddressAlias(trip.destinationAddress || person?.destinationAddress || "", person);
+  const dropoffReal = getAddressReal(trip.destinationAddress || person?.destinationAddress || "");
+
+  const pickupActualText = trip.pickupTime ? ` (實際 ${trip.pickupTime})` : "";
+  const dropoffActualText = trip.dropoffTime ? ` (實際 ${trip.dropoffTime})` : "";
+
+  const mobilityText = person?.mobility ? `🏷️ ${person.mobility}` : "";
+  const noteText = person?.note ? `📝 ${person.note}` : "";
+  const badges = [mobilityText, noteText].filter(Boolean).join(" · ");
 
   return `
     <article class="driver-task">
       <div class="task-main">
         <div class="task-title-row">
           <div>
-            <p class="eyebrow">${escapeHTML(trip.scheduledPickup)} 上車 · ${escapeHTML(trip.scheduledDropoff)} 送達</p>
-            <h4>${escapeHTML(person?.name ?? "未知個案")}</h4>
+            <h4 style="font-size: 20px; font-weight: 800; color: var(--ink); margin-bottom: 4px;">${escapeHTML(person?.name ?? "未知個案")}</h4>
+            ${badges ? `<p class="subtext" style="font-size: 13px; color: var(--muted); margin: 0;">${escapeHTML(badges)}</p>` : ""}
           </div>
           <span class="status-pill ${escapeHTML(status)}">${escapeHTML(getTripStatusLabel(trip))}</span>
         </div>
-        <div class="address-grid">
-          <div class="address-box">
-            <span>上車地址</span>
-            <strong>${escapeHTML(getAddressAlias(trip.pickupAddress || person?.pickupAddress || "", person))}</strong>
-            <span style="font-size: 12px; color: var(--muted); display: block; margin-top: 4px;">${escapeHTML(getAddressReal(trip.pickupAddress || person?.pickupAddress || ""))}</span>
+        
+        <div class="route-timeline" style="display: grid; gap: 8px; margin: 8px 0; padding: 12px 14px; background: var(--surface-strong); border: 1px solid rgba(189, 201, 200, 0.4); border-radius: 14px; font-size: 14px;">
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <span style="color: var(--brand); font-weight: bold; font-size: 16px; margin-top: 1px;">•</span>
+            <div style="flex: 1;">
+              <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
+              ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; margin-left: 6px;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
+              <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 2px;">${escapeHTML(pickupReal)}</span>
+            </div>
           </div>
-          <div class="address-box">
-            <span>目的地</span>
-            <strong>${escapeHTML(getAddressAlias(trip.destinationAddress || person?.destinationAddress || "", person))}</strong>
-            <span style="font-size: 12px; color: var(--muted); display: block; margin-top: 4px;">${escapeHTML(getAddressReal(trip.destinationAddress || person?.destinationAddress || ""))}</span>
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <span style="color: var(--muted); font-weight: bold; font-size: 16px; margin-top: 1px;">▪</span>
+            <div style="flex: 1;">
+              <span style="font-weight: 800; color: var(--ink);">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
+              ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; margin-left: 6px;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
+              <span style="display: block; font-size: 12px; color: var(--muted); margin-top: 2px;">${escapeHTML(dropoffReal)}</span>
+            </div>
           </div>
         </div>
-        <p class="subtext">${escapeHTML(person?.mobility ?? "")} · ${escapeHTML(person?.note ?? "")}</p>
-        <p class="subtext">接到 ${escapeHTML(trip.pickupTime || "--:--")} · 送達 ${escapeHTML(trip.dropoffTime || "--:--")}</p>
-        <p class="location-note">定位：${escapeHTML(latestLocation ? formatCoordinate(latestLocation) : "按下打卡按鈕時自動記錄")}</p>
       </div>
-      <div class="task-actions">
+      <div class="task-actions" style="margin-top: 4px;">
         <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled}>已接到個案</button>
         <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled}>已送達目的地</button>
       </div>

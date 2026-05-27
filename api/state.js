@@ -40,7 +40,8 @@ function apiKey() {
 }
 
 function todayKey(date = new Date()) {
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  const taipeiTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  return taipeiTime.toISOString().slice(0, 10);
 }
 
 function cleanId(val) {
@@ -54,8 +55,9 @@ function cleanId(val) {
 }
 
 function localTime(date = new Date()) {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const taipeiTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const hours = String(taipeiTime.getUTCHours()).padStart(2, "0");
+  const minutes = String(taipeiTime.getUTCMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
 }
 
