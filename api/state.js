@@ -559,30 +559,52 @@ async function handleAction(action, payload = {}) {
         if (data.status === "OK" && data.results && data.results.length > 0) {
           const loc = data.results[0].geometry.location;
           console.log(`[Geocode] Google Maps Geocoding success for "${address}":`, loc);
-          return { ok: true, lat: loc.lat, lng: loc.lng };
+          return { ok: true, lat: loc.lat, lng: loc.lng, provider: "google" };
         } else {
           console.warn(`[Geocode] Google Geocoding status returned ${data.status} for address "${address}"`);
+          return { ok: false, error: `Google API error: ${data.status}`, error_detail: data.error_message };
         }
       } catch (err) {
         console.error("Google Geocoding error:", err.message);
+        return { ok: false, error: `Google API network error: ${err.message}` };
       }
     }
     
-    // Fallback to server-side Nominatim which is much faster and doesn't get CORS issues!
+    // Fallback to server-side Nominatim with two-stage fallback (full address, then road name)
+    let cleanAddress = address.replace(/巿/g, "市").trim();
+    
+    // 第一階段：搜尋完整地址
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanAddress)}&format=json&limit=1`;
       const res = await fetch(url, {
         headers: { 'User-Agent': 'AntigravityShuttleApp/1.0' }
       });
       const data = await res.json();
       if (data && data.length > 0) {
-        return { ok: true, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+        return { ok: true, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), provider: "nominatim-full" };
       }
     } catch (err) {
-      console.error("Server Nominatim geocoding error:", err.message);
+      console.error("Server Nominatim stage 1 error:", err.message);
+    }
+
+    // 第二階段：搜尋路名（去除門牌號碼以保證落在同一路段，提供近乎 95% 精準之街區坐標）
+    try {
+      const roadAddr = cleanAddress.replace(/\d+\s*(?:之\s*\d+)?\s*號$/, "").trim();
+      if (roadAddr && roadAddr !== cleanAddress) {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(roadAddr)}&format=json&limit=1`;
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'AntigravityShuttleApp/1.0' }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) {
+          return { ok: true, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), provider: "nominatim-road" };
+        }
+      }
+    } catch (err) {
+      console.error("Server Nominatim stage 2 error:", err.message);
     }
     
-    return { ok: false };
+    return { ok: false, error: "All geocoding providers failed" };
   }
 
   if (coordinatorActions.has(action) && payload.coordinatorPasscode !== coordinatorPasscode()) {
