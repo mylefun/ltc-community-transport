@@ -498,11 +498,15 @@ async function syncSchedulesForDate(serviceDate, schedules, cases, drivers) {
     });
   }
 
-  if (generated.length) {
-    await supabase("daily_rides?on_conflict=schedule_id,service_date", {
+  // 僅插入資料庫中尚不存在的班次，防止覆蓋已經被自動順延時間、或手動重新指派司機的每日行程！
+  const newGenerated = generated.filter((ride) => {
+    return !existing.some((ex) => ex.schedule_id === ride.schedule_id);
+  });
+
+  if (newGenerated.length) {
+    await supabase("daily_rides", {
       method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify(generated),
+      body: JSON.stringify(newGenerated),
     });
   }
 }

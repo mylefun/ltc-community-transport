@@ -795,14 +795,20 @@ function normalizeState(value) {
     };
   });
 
-  next.trips = next.trips.map((trip) => ({
-    pickupLocation: null,
-    dropoffLocation: null,
-    ...trip,
-    scheduleId: trip.scheduleId || trip.schedule_id || "",
-    pickupAddress: trip.pickupAddress || trip.pickup_address || next.cases.find((person) => person.id === trip.caseId)?.pickupAddress || "",
-    destinationAddress: trip.destinationAddress || trip.destination_address || next.cases.find((person) => person.id === trip.caseId)?.destinationAddress || "",
-  }));
+  next.trips = next.trips.map((trip) => {
+    const cid = trip.caseId || trip.case_id || "";
+    return {
+      pickupLocation: null,
+      dropoffLocation: null,
+      ...trip,
+      serviceDate: trip.serviceDate || trip.service_date || "",
+      caseId: cid,
+      driverId: trip.driverId || trip.driver_id || "",
+      scheduleId: trip.scheduleId || trip.schedule_id || "",
+      pickupAddress: trip.pickupAddress || trip.pickup_address || next.cases.find((person) => person.id === cid)?.pickupAddress || "",
+      destinationAddress: trip.destinationAddress || trip.destination_address || next.cases.find((person) => person.id === cid)?.destinationAddress || "",
+    };
+  });
 
   next.schedules = next.schedules.map((schedule) => {
     const fallback = fresh.schedules.find((item) => item.id === schedule.id) || {};
@@ -5670,7 +5676,8 @@ async function checkAndShiftDelayedTrips() {
   const today = todayKey();
   
   for (const trip of state.trips) {
-    if (trip.serviceDate !== today) continue;
+    const tripDate = trip.serviceDate || trip.service_date || "";
+    if (tripDate !== today) continue;
     if (trip.pickupTime || trip.status === "completed") continue;
     if (!trip.scheduledPickup) continue;
     
@@ -5685,16 +5692,16 @@ async function checkAndShiftDelayedTrips() {
       const newHours = String(newScheduledDate.getHours()).padStart(2, '0');
       const newMinutes = String(newScheduledDate.getMinutes()).padStart(2, '0');
       const nextTimeStr = `${newHours}:${newMinutes}`;
+      const nextTimeFull = `${nextTimeStr}:00`;
       
       // 比對快取，如果此班次已經順延至該目標時間，則不再重複順延與發送通知
       const cacheKey = `${trip.id}-${nextTimeStr}`;
       if (shiftedTripsCache.has(cacheKey)) continue;
-      shiftedTripsCache.add(cacheKey);
 
       const oldPickup = trip.scheduledPickup;
-      trip.scheduledPickup = nextTimeStr;
-      
-      // Also shift scheduledDropoff by 10 minutes if exists
+      let nextDropoffStr = trip.scheduledDropoff;
+      let nextDropoffFull = null;
+
       if (trip.scheduledDropoff) {
         const [dHours, dMinutes] = trip.scheduledDropoff.split(":").map(Number);
         const dropoffDate = new Date();
@@ -5702,24 +5709,36 @@ async function checkAndShiftDelayedTrips() {
         const newDropoffDate = new Date(dropoffDate.getTime() + 10 * 60_000);
         const newDHours = String(newDropoffDate.getHours()).padStart(2, '0');
         const newDMinutes = String(newDropoffDate.getMinutes()).padStart(2, '0');
-        trip.scheduledDropoff = `${newDHours}:${newDMinutes}`;
+        nextDropoffStr = `${newDHours}:${newDMinutes}`;
+        nextDropoffFull = `${nextDropoffStr}:00`;
       }
-      
-      stateChanged = true;
-      console.log(`[Delay Shift] Trip ${trip.id} shifted from ${oldPickup} to ${trip.scheduledPickup}`);
-      addNotification(`行程 ${trip.id} 發生延遲，預定接送時間已順延 10 分鐘至 ${trip.scheduledPickup}`, true);
       
       if (dataMode === "supabase") {
         try {
+          // 只有在 Supabase API 成功更新後，我們才更新本地快取並渲染
           await apiAction("update_trip_time", {
             tripId: trip.id,
-            scheduledPickup: trip.scheduledPickup,
-            scheduledDropoff: trip.scheduledDropoff,
-            serviceDate: state.serviceDate
+            scheduledPickup: nextTimeFull,
+            scheduledDropoff: nextDropoffFull || null,
+            serviceDate: today
           });
+          
+          shiftedTripsCache.add(cacheKey);
+          console.log(`[Delay Shift] Trip ${trip.id} shifted successfully in Supabase to ${nextTimeStr}`);
+          addNotification(`行程 ${trip.id} 發生延遲，預定接送時間已順延 10 分鐘至 ${nextTimeStr}`, true);
+          stateChanged = true;
         } catch (e) {
           console.error("Failed to sync delayed trip shift to Supabase:", e);
+          // 同步失敗，不加快取，本地狀態保持原樣，下一次 15 秒定時器可以無縫重試
         }
+      } else {
+        // 本地示範資料模式
+        trip.scheduledPickup = nextTimeStr;
+        trip.scheduledDropoff = nextDropoffStr;
+        shiftedTripsCache.add(cacheKey);
+        console.log(`[Delay Shift] Trip ${trip.id} shifted locally from ${oldPickup} to ${trip.scheduledPickup}`);
+        addNotification(`行程 ${trip.id} 發生延遲，預定接送時間已順延 10 分鐘至 ${trip.scheduledPickup}`, true);
+        stateChanged = true;
       }
     }
   }
