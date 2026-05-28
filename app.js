@@ -2828,18 +2828,18 @@ async function updateLeafletData() {
   // Helper: resolve a coordinate from trip/case data using real address
   function resolvePickupCoord(trip, idx, driverLocation, status) {
     if (idx === 0 && status === "picked_up" && driverLocation) return driverLocation;
-    if (trip.pickupLocation?.lat) return trip.pickupLocation;
     const person = getCase(trip.caseId);
     const addr = trip.pickupAddress || person?.pickupAddress || "";
     if (addr) return resolveCoordinate(addr, trip.caseId, "pickup");
+    if (trip.pickupLocation?.lat) return trip.pickupLocation;
     return null;
   }
 
   function resolveDestCoord(trip) {
-    if (trip.dropoffLocation?.lat) return trip.dropoffLocation;
     const person = getCase(trip.caseId);
     const addr = trip.destinationAddress || person?.destinationAddress || "";
     if (addr) return resolveCoordinate(addr, trip.caseId, "destination");
+    if (trip.dropoffLocation?.lat) return trip.dropoffLocation;
     return null;
   }
 
