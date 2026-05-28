@@ -5662,6 +5662,9 @@ function renderReleases() {
     .join("");
 }
 
+// 全域快取，紀錄已順延過的行程與目標時間，防止重複發送通知與時間順延
+const shiftedTripsCache = new Set();
+
 async function checkAndShiftDelayedTrips() {
   let stateChanged = false;
   const today = todayKey();
@@ -5681,8 +5684,15 @@ async function checkAndShiftDelayedTrips() {
       const newScheduledDate = new Date(scheduledDate.getTime() + 10 * 60_000);
       const newHours = String(newScheduledDate.getHours()).padStart(2, '0');
       const newMinutes = String(newScheduledDate.getMinutes()).padStart(2, '0');
+      const nextTimeStr = `${newHours}:${newMinutes}`;
+      
+      // 比對快取，如果此班次已經順延至該目標時間，則不再重複順延與發送通知
+      const cacheKey = `${trip.id}-${nextTimeStr}`;
+      if (shiftedTripsCache.has(cacheKey)) continue;
+      shiftedTripsCache.add(cacheKey);
+
       const oldPickup = trip.scheduledPickup;
-      trip.scheduledPickup = `${newHours}:${newMinutes}`;
+      trip.scheduledPickup = nextTimeStr;
       
       // Also shift scheduledDropoff by 10 minutes if exists
       if (trip.scheduledDropoff) {
