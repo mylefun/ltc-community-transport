@@ -313,13 +313,14 @@ async function readState(serviceDate = todayKey()) {
   await syncSchedulesForDate(serviceDate, schedules, cases, drivers);
   const trips = await supabase(`daily_rides?select=*&service_date=eq.${serviceDate}&order=scheduled_pickup.asc`);
 
-  let settings = { geofenceRadius: 300, preArriveWindow: 30 };
+  let settings = { geofenceRadius: 300, preArriveWindow: 30, googleMapsApiKey: "" };
   try {
     const rawSettings = await supabase("system_settings?select=*");
     if (Array.isArray(rawSettings)) {
       rawSettings.forEach((s) => {
         if (s.key === "geofence_radius") settings.geofenceRadius = Number(s.value);
         if (s.key === "geofence_pre_arrive_window") settings.preArriveWindow = Number(s.value);
+        if (s.key === "google_maps_api_key") settings.googleMapsApiKey = s.value;
       });
     }
   } catch (err) {
@@ -531,6 +532,59 @@ function locationObject(lat, lng, source, accuracy = 0) {
 }
 
 async function handleAction(action, payload = {}) {
+  if (action === "geocode") {
+    const address = payload.address;
+    let apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+    if (!apiKey) {
+      try {
+        const rows = await supabase("system_settings?key=eq.google_maps_api_key");
+        if (rows && rows.length > 0 && rows[0].value) {
+          apiKey = rows[0].value;
+        }
+      } catch (err) {
+        console.warn("Failed to read google_maps_api_key from db:", err.message);
+      }
+    }
+
+    if (!apiKey && payload.googleMapsApiKey) {
+      apiKey = payload.googleMapsApiKey;
+    }
+
+    if (apiKey) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.status === "OK" && data.results && data.results.length > 0) {
+          const loc = data.results[0].geometry.location;
+          console.log(`[Geocode] Google Maps Geocoding success for "${address}":`, loc);
+          return { ok: true, lat: loc.lat, lng: loc.lng };
+        } else {
+          console.warn(`[Geocode] Google Geocoding status returned ${data.status} for address "${address}"`);
+        }
+      } catch (err) {
+        console.error("Google Geocoding error:", err.message);
+      }
+    }
+    
+    // Fallback to server-side Nominatim which is much faster and doesn't get CORS issues!
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'AntigravityShuttleApp/1.0' }
+      });
+      const data = await res.json();
+      if (data && data.length > 0) {
+        return { ok: true, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      }
+    } catch (err) {
+      console.error("Server Nominatim geocoding error:", err.message);
+    }
+    
+    return { ok: false };
+  }
+
   if (coordinatorActions.has(action) && payload.coordinatorPasscode !== coordinatorPasscode()) {
     throw new Error("Coordinator passcode required");
   }
@@ -540,6 +594,17 @@ async function handleAction(action, payload = {}) {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ driver_id: cleanId(payload.driverId) }),
+    });
+  }
+
+  if (action === "update_trip_time") {
+    await supabase(`daily_rides?id=eq.${encodeURIComponent(cleanId(payload.tripId))}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        scheduled_pickup: payload.scheduledPickup,
+        scheduled_dropoff: payload.scheduledDropoff,
+      }),
     });
   }
 
@@ -816,8 +881,9 @@ async function handleAction(action, payload = {}) {
   if (action === "update_system_settings") {
     const radius = String(payload.radius || "300");
     const window = String(payload.window || "30");
+    const mapsApiKey = String(payload.googleMapsApiKey || "");
 
-    await Promise.all([
+    const promises = [
       supabase("system_settings?key=eq.geofence_radius", {
         method: "PATCH",
         body: JSON.stringify({ value: radius }),
@@ -826,7 +892,26 @@ async function handleAction(action, payload = {}) {
         method: "PATCH",
         body: JSON.stringify({ value: window }),
       })
-    ]);
+    ];
+
+    if (mapsApiKey !== undefined) {
+      promises.push((async () => {
+        try {
+          await supabase("system_settings?key=eq.google_maps_api_key", {
+            method: "PATCH",
+            body: JSON.stringify({ value: mapsApiKey }),
+          });
+        } catch (e) {
+          // If key does not exist yet, insert it
+          await supabase("system_settings", {
+            method: "POST",
+            body: JSON.stringify({ key: "google_maps_api_key", value: mapsApiKey }),
+          });
+        }
+      })());
+    }
+
+    await Promise.all(promises);
   }
 
   if (action === "pickup") {

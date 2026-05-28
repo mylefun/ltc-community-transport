@@ -215,6 +215,7 @@ const taipeiBounds = {
 };
 
 let activeView = "home";
+let lastRenderedView = null;
 let activeDriverId = "";
 let selectedLoginDriverId = "";
 let pinInput = "";
@@ -319,6 +320,7 @@ let flashTimeout = null;
 // === Geofence Auto Check-in State ===
 let GEOFENCE_RADIUS_METERS = Number(localStorage.getItem("ltc-geofence-radius") || "300"); // 觸發圍欄半徑（公尺）
 let GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = Number(localStorage.getItem("ltc-geofence-pre-arrive-window") || "30"); // 允許提前偵測上車的最大時間（分鐘）
+let GOOGLE_MAPS_API_KEY = localStorage.getItem("ltc-google-maps-api-key") || ""; // Google Maps API 金鑰
 const GEOFENCE_COUNTDOWN_SECONDS = 5; // 自動確認倒數秒數
 let geofenceWatchId = null;        // watchPosition 的 ID，登出時清除
 let geofenceAlerted = new Set();   // 已觸發通知的 tripId+type key，避免重複觸發
@@ -347,6 +349,23 @@ function localTime(date = new Date()) {
 
 function addMinutes(minutes) {
   return localTime(new Date(Date.now() + minutes * 60_000));
+}
+
+function add30MinutesToTimeString(timeStr) {
+  if (!timeStr) return "";
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return "";
+  let hours = parseInt(parts[0], 10);
+  let minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes)) return "";
+  
+  minutes += 30;
+  if (minutes >= 60) {
+    minutes -= 60;
+    hours = (hours + 1) % 24;
+  }
+  
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 function normalizeBirthDate(value) {
@@ -818,12 +837,14 @@ function normalizeState(value) {
   if (value.settings) {
     next.settings = {
       geofenceRadius: Number(value.settings.geofenceRadius || value.settings.geofence_radius || 300),
-      preArriveWindow: Number(value.settings.preArriveWindow || value.settings.pre_arrive_window || 30)
+      preArriveWindow: Number(value.settings.preArriveWindow || value.settings.pre_arrive_window || 30),
+      googleMapsApiKey: value.settings.googleMapsApiKey || value.settings.google_maps_api_key || ""
     };
     GEOFENCE_RADIUS_METERS = next.settings.geofenceRadius;
     GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = next.settings.preArriveWindow;
+    GOOGLE_MAPS_API_KEY = next.settings.googleMapsApiKey;
   } else {
-    next.settings = { geofenceRadius: 300, preArriveWindow: 30 };
+    next.settings = { geofenceRadius: 300, preArriveWindow: 30, googleMapsApiKey: "" };
   }
 
   return next;
@@ -1172,7 +1193,7 @@ function defaultState() {
     schedules: [],
     driverLocations: seedDriverLocations(drivers, trips),
     events: [],
-    settings: { geofenceRadius: 300, preArriveWindow: 30 },
+    settings: { geofenceRadius: 300, preArriveWindow: 30, googleMapsApiKey: "" },
   };
 }
 
@@ -1215,9 +1236,22 @@ function fallbackLocation(driverId, tripId = "") {
   const base = { lat: 24.757, lng: 121.785 }; // 壯圍鄉中央路2段265號
   const seed = `${driverId}${tripId}${new Date().getMinutes()}`;
   const drift = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  
+  let latOffset = ((drift % 15) - 7) * 0.0001;
+  let lngOffset = ((drift % 11) - 5) * 0.0001;
+  
+  // 保證在上車 (pickup) 與送達 (dropoff) 模擬定位時，能拉開數百公尺的合理地理差距，以使地圖呈現更真實
+  if (tripId.includes("pickup")) {
+    latOffset += 0.006;  // 約往北 660 公尺
+    lngOffset -= 0.006;  // 約往西 660 公尺
+  } else if (tripId.includes("dropoff")) {
+    latOffset -= 0.006;  // 約往南 660 公尺
+    lngOffset += 0.006;  // 約往東 660 公尺
+  }
+  
   return {
-    lat: Number((base.lat + ((drift % 15) - 7) * 0.00007).toFixed(6)),
-    lng: Number((base.lng + ((drift % 11) - 5) * 0.00007).toFixed(6)),
+    lat: Number((base.lat + latOffset).toFixed(6)),
+    lng: Number((base.lng + lngOffset).toFixed(6)),
   };
 }
 
@@ -1326,6 +1360,14 @@ function render() {
     button.classList.toggle("active", button.dataset.view === activeView);
   });
   const visibleView = protectedViews.has(activeView) && !coordinatorUnlocked ? "coordinatorGate" : activeView;
+  const viewChanged = (visibleView !== lastRenderedView);
+  lastRenderedView = visibleView;
+
+  const appView = document.getElementById("appView");
+  if (appView && viewChanged) {
+    appView.classList.remove("view-fade-in");
+  }
+
   document.body.dataset.view = visibleView;
   updateConnectionState();
 
@@ -1341,6 +1383,11 @@ function render() {
   if (visibleView === "reimbursements") renderReimbursements();
   renderFlash();
   updateNotificationCenter();
+
+  if (appView && viewChanged) {
+    void appView.offsetWidth; // Force reflow
+    appView.classList.add("view-fade-in");
+  }
 }
 
 let selectedReimbursementMonth = todayKey().substring(0, 7);
@@ -1946,6 +1993,16 @@ function fillScheduleOverrideForm(scheduleId = "") {
   document.getElementById("scheduleOverrideMode").textContent = `${schedule.caseId ? getCase(schedule.caseId)?.name || "排程" : "排程"} 的例外變更`;
 }
 
+function isSchedulePast(schedule) {
+  const today = state.serviceDate || todayKey();
+  if (schedule.scheduleType === "single") {
+    return schedule.serviceDate && schedule.serviceDate < today;
+  } else if (schedule.scheduleType === "weekly") {
+    return schedule.endDate && schedule.endDate < today;
+  }
+  return false;
+}
+
 function renderScheduleManager() {
   const list = document.getElementById("scheduleList");
   if (!list) return;
@@ -1958,10 +2015,11 @@ function renderScheduleManager() {
     clearSelectedScheduleTimeout();
   }
 
-  document.getElementById("scheduleCount").textContent = `${state.schedules.length} 筆排程`;
-  list.innerHTML = state.schedules.length
-    ? state.schedules.map(scheduleCard).join("")
-    : '<div class="empty-state">目前還沒有排程，先新增單次或週期班次。</div>';
+  const activeSchedules = state.schedules.filter((s) => !isSchedulePast(s));
+  document.getElementById("scheduleCount").textContent = `${activeSchedules.length} 筆排程`;
+  list.innerHTML = activeSchedules.length
+    ? activeSchedules.map(scheduleCard).join("")
+    : '<div class="empty-state">目前還沒有進行中的排程，先新增單次或週期班次。</div>';
 
   const caseSelect = document.getElementById("scheduleCaseSelect");
   const driverSelect = document.getElementById("scheduleDriverSelect");
@@ -1998,6 +2056,31 @@ function renderScheduleManager() {
   
   const driverSelectReturn = document.getElementById("scheduleDriverSelectReturn");
   if (driverSelectReturn) driverSelectReturn.innerHTML = driverOptions;
+
+  const schedForm = document.getElementById("scheduleForm");
+  if (schedForm) {
+    const pickupInput = schedForm.elements.scheduledPickup;
+    const dropoffInput = schedForm.elements.scheduledDropoff;
+    if (pickupInput && dropoffInput) {
+      pickupInput.addEventListener("input", (e) => {
+        const val = e.target.value;
+        if (val) {
+          dropoffInput.value = add30MinutesToTimeString(val);
+        }
+      });
+    }
+
+    const pickupReturnInput = schedForm.elements.scheduledPickupReturn;
+    const dropoffReturnInput = schedForm.elements.scheduledDropoffReturn;
+    if (pickupReturnInput && dropoffReturnInput) {
+      pickupReturnInput.addEventListener("input", (e) => {
+        const val = e.target.value;
+        if (val) {
+          dropoffReturnInput.value = add30MinutesToTimeString(val);
+        }
+      });
+    }
+  }
 
   const hasReturnTripCheckbox = document.getElementById("hasReturnTripCheckbox");
   if (hasReturnTripCheckbox) {
@@ -2226,6 +2309,22 @@ async function handleScheduleSubmit(event) {
     return;
   }
 
+  // Create loading overlay in schedule form panel
+  const card = document.querySelector("#scheduleFormPanel .modal-card");
+  let loadingOverlay = null;
+  if (card) {
+    loadingOverlay = document.createElement("div");
+    loadingOverlay.className = "form-loading-overlay";
+    loadingOverlay.innerHTML = `
+      <div class="loader-spinner"></div>
+      <div class="loader-text">處理中，請稍候...</div>
+    `;
+    card.appendChild(loadingOverlay);
+  }
+
+  // Ensure beautiful processing animation is visible for at least 1 second
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
   if (dataMode === "supabase") {
     try {
       await apiAction(editingId ? "update_schedule" : "create_schedule", {
@@ -2266,6 +2365,7 @@ async function handleScheduleSubmit(event) {
       addNotification(`${editingId ? "已更新" : "已新增"}排程成功`, true);
       refreshDashboardAfterScheduleChange();
     } catch (error) {
+      if (loadingOverlay) loadingOverlay.remove();
       addNotification(`排程儲存失敗：${error.message}`, false);
     }
     return;
@@ -3162,52 +3262,82 @@ async function geocodeAddress(address) {
   if (activeGeocodingRequests.has(cleanAddr)) return null;
   activeGeocodingRequests.add(cleanAddr);
 
-  let realAddr = cleanAddr.replace(/巿/g, "市");
-  
-  if ((realAddr.includes("壯圍") || realAddr.includes("五結") || realAddr.includes("羅東") || realAddr.includes("宜蘭")) && !realAddr.includes("宜蘭縣")) {
-    realAddr = "宜蘭縣" + realAddr;
-  }
-
-  let townshipFallback = "";
-  const match = realAddr.match(/^(宜蘭縣|台北市)?(壯圍鄉|五結鄉|羅東鎮|宜蘭市|礁溪鄉|員山鄉|三星鄉|冬山鄉|蘇澳鎮|頭城鎮)/);
-  if (match) {
-    const county = match[1] || "宜蘭縣";
-    const township = match[2];
-    townshipFallback = county + township;
-  }
-
-  const steps = [
-    realAddr,
-    realAddr.replace(/(號)[\d樓\-室\s\/A-Za-z]+.*$/, "$1"),
-    realAddr.replace(/\d+號.*$/, ""),
-    realAddr.replace(/\d+巷.*$/, ""),
-    realAddr.replace(/[\u4e00-\u9fa5]+(村|里)/, ""),
-    townshipFallback
-  ];
-
-  const uniqueSteps = [...new Set(steps.map(s => s.trim()).filter(s => s.length > 3))];
   let result = null;
 
-  for (const query of uniqueSteps) {
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'AntigravityShuttleApp/1.0'
+  // 1. 優先嘗試後端 API 進行高精度定位 (若配置了 GOOGLE_MAPS_API_KEY 會使用 Google Geocoding；否則由後端發送請求，避免瀏覽器 CORS/429 限制)
+  try {
+    const response = await fetch("/api/state", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "geocode",
+        payload: { 
+          address: cleanAddr,
+          googleMapsApiKey: GOOGLE_MAPS_API_KEY
         }
-      });
-      const data = await res.json();
-      if (data && data.length > 0) {
-        result = {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon)
-        };
-        break;
+      })
+    });
+    if (response.ok) {
+      const resData = await response.json();
+      if (resData && resData.lat && resData.lng) {
+        result = { lat: resData.lat, lng: resData.lng };
+        console.log(`[Geocode] Successfully geocoded "${cleanAddr}" via server-side API:`, result);
       }
-    } catch (e) {
-      console.error(`Geocoding error for query "${query}":`, e);
     }
-    await new Promise(r => setTimeout(r, 1000));
+  } catch (err) {
+    console.warn("[Geocode] Server-side geocoding request failed, falling back to client-side OSM:", err.message);
+  }
+
+  // 2. 備用方案：若後端 API 定位失敗，則於瀏覽器前端使用 Nominatim OSM 逐級搜尋 (作為保底防護)
+  if (!result) {
+    let realAddr = cleanAddr.replace(/巿/g, "市");
+    
+    if ((realAddr.includes("壯圍") || realAddr.includes("五結") || realAddr.includes("羅東") || realAddr.includes("宜蘭")) && !realAddr.includes("宜蘭縣")) {
+      realAddr = "宜蘭縣" + realAddr;
+    }
+
+    let townshipFallback = "";
+    const match = realAddr.match(/^(宜蘭縣|台北市)?(壯圍鄉|五結鄉|羅東鎮|宜蘭市|礁溪鄉|員山鄉|三星鄉|冬山鄉|蘇澳鎮|頭城鎮)/);
+    if (match) {
+      const county = match[1] || "宜蘭縣";
+      const township = match[2];
+      townshipFallback = county + township;
+    }
+
+    const steps = [
+      realAddr,
+      realAddr.replace(/(號)[\d樓\-室\s\/A-Za-z]+.*$/, "$1"),
+      realAddr.replace(/\d+號.*$/, ""),
+      realAddr.replace(/\d+巷.*$/, ""),
+      realAddr.replace(/[\u4e00-\u9fa5]+(村|里)/, ""),
+      townshipFallback
+    ];
+
+    const uniqueSteps = [...new Set(steps.map(s => s.trim()).filter(s => s.length > 3))];
+
+    for (const query of uniqueSteps) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent': 'AntigravityShuttleApp/1.0'
+          }
+        });
+        const data = await res.json();
+        if (data && data.length > 0) {
+          result = {
+            lat: parseFloat(data[0].lat),
+            lng: parseFloat(data[0].lon)
+          };
+          break;
+        }
+      } catch (e) {
+        console.error(`Geocoding error for query "${query}":`, e);
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
   }
 
   activeGeocodingRequests.delete(cleanAddr);
@@ -3241,18 +3371,19 @@ function resolveCoordinate(address, caseId, type) {
     return geocodingCache[realAddress];
   }
 
-  const isYilan = /宜蘭|壯圍|五結|羅東/.test(realAddress);
+  const isTaipei = /台北|新北|板橋|三重|中和|蘆洲|新莊|五股|土城|汐止|樹林|鶯歌|三峽|淡水|瑞芳/.test(realAddress);
   const seed = [...(realAddress || `${caseId}-${type}`)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   
-  if (isYilan) {
-    return {
-      lat: Number((24.75 + (seed % 50) * 0.0011).toFixed(6)),
-      lng: Number((121.77 + (seed % 75) * 0.0011).toFixed(6)),
-    };
-  } else {
+  if (isTaipei) {
     return {
       lat: Number((25.018 + (seed % 70) * 0.0011).toFixed(6)),
       lng: Number((121.49 + (seed % 85) * 0.0011).toFixed(6)),
+    };
+  } else {
+    // 預設為主要營運區域（宜蘭壯圍一帶），避免本地街路名因未寫縣市名而被誤定位至台北，造成地圖畫線過長
+    return {
+      lat: Number((24.75 + (seed % 50) * 0.0011).toFixed(6)),
+      lng: Number((121.77 + (seed % 75) * 0.0011).toFixed(6)),
     };
   }
 }
@@ -5164,14 +5295,14 @@ function checkGeofenceTriggers(lat, lng, driverId) {
     if (tripStatus === "scheduled" || tripStatus === "late") {
       // 等待接客 → 比對上車地址
       if (!trip.pickupTime) {
-        // 防誤觸同日來回之過早行程：若距離預定上車時間超過指定時間（如 30 分鐘），跳過此行程的自動上車偵測
+        // 防誤觸同日來回之過早行程：若距離預定上車時間超過指定時間（限於預定上車時間正負閥值內），跳過自動上車偵測
         if (trip.scheduledPickup && trip.serviceDate) {
           const [year, month, day] = trip.serviceDate.split("-").map(Number);
           const [sHours, sMinutes] = trip.scheduledPickup.split(":").map(Number);
           const scheduledTime = new Date(year, month - 1, day, sHours, sMinutes, 0, 0);
           const timeDiffMinutes = (scheduledTime.getTime() - Date.now()) / (60 * 1000);
-          if (timeDiffMinutes > GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES) {
-            continue; // 還沒到合理的時間段，跳過自動偵測
+          if (Math.abs(timeDiffMinutes) > GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES) {
+            continue; // 還沒到合理的時間段或已過遲，跳過自動偵測
           }
         }
         targetAddress = trip.pickupAddress || person?.pickupAddress || "";
@@ -5179,6 +5310,18 @@ function checkGeofenceTriggers(lat, lng, driverId) {
       }
     } else if (tripStatus === "picked_up") {
       // 接送中 → 比對目的地
+      if (!trip.dropoffTime) {
+        // 限於預定送達時間正負閥值內觸發自動送達打卡
+        if (trip.scheduledDropoff && trip.serviceDate) {
+          const [year, month, day] = trip.serviceDate.split("-").map(Number);
+          const [sHours, sMinutes] = trip.scheduledDropoff.split(":").map(Number);
+          const scheduledTime = new Date(year, month - 1, day, sHours, sMinutes, 0, 0);
+          const timeDiffMinutes = (scheduledTime.getTime() - Date.now()) / (60 * 1000);
+          if (Math.abs(timeDiffMinutes) > GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES) {
+            continue; // 超過正負閥值，跳過自動送達偵測
+          }
+        }
+      }
       targetAddress = trip.destinationAddress || person?.destinationAddress || "";
       eventType = "dropoff";
     }
@@ -5388,6 +5531,22 @@ function renderSettings() {
       windowRange.value = String(GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES);
       windowLabel.textContent = String(GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES);
 
+      const apiKeyInput = document.getElementById("googleMapsApiKeyInput");
+      const toggleBtn = document.getElementById("toggleMapsApiKeyBtn");
+      if (apiKeyInput && toggleBtn) {
+        apiKeyInput.value = GOOGLE_MAPS_API_KEY || "";
+        toggleBtn.addEventListener("click", () => {
+          const icon = toggleBtn.querySelector("span");
+          if (apiKeyInput.type === "password") {
+            apiKeyInput.type = "text";
+            icon.textContent = "visibility";
+          } else {
+            apiKeyInput.type = "password";
+            icon.textContent = "visibility_off";
+          }
+        });
+      }
+
       radiusRange.addEventListener("input", () => {
         radiusLabel.textContent = radiusRange.value;
       });
@@ -5399,13 +5558,16 @@ function renderSettings() {
       document.getElementById("geofenceSettingsSaveBtn").addEventListener("click", async () => {
         GEOFENCE_RADIUS_METERS = Number(radiusRange.value);
         GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = Number(windowRange.value);
+        GOOGLE_MAPS_API_KEY = apiKeyInput ? apiKeyInput.value.trim() : "";
 
         localStorage.setItem("ltc-geofence-radius", String(GEOFENCE_RADIUS_METERS));
         localStorage.setItem("ltc-geofence-pre-arrive-window", String(GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES));
+        localStorage.setItem("ltc-google-maps-api-key", GOOGLE_MAPS_API_KEY);
 
         state.settings = {
           geofenceRadius: GEOFENCE_RADIUS_METERS,
-          preArriveWindow: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES
+          preArriveWindow: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES,
+          googleMapsApiKey: GOOGLE_MAPS_API_KEY
         };
         saveState();
 
@@ -5413,9 +5575,10 @@ function renderSettings() {
           try {
             await apiAction("update_system_settings", {
               radius: GEOFENCE_RADIUS_METERS,
-              window: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES
+              window: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES,
+              googleMapsApiKey: GOOGLE_MAPS_API_KEY
             });
-            setFlash("地理圍欄自動打卡參數已成功同步至雲端！", "success");
+            setFlash("地理圍欄參數與 Google API 金鑰已成功同步至雲端！", "success");
           } catch (e) {
             console.error("Failed to sync settings to Supabase:", e);
             setFlash("參數已儲存至本機，但雲端同步失敗：" + e.message, "error");
@@ -5428,13 +5591,16 @@ function renderSettings() {
       document.getElementById("geofenceSettingsResetBtn").addEventListener("click", async () => {
         GEOFENCE_RADIUS_METERS = 300;
         GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = 30;
+        GOOGLE_MAPS_API_KEY = "";
 
         localStorage.removeItem("ltc-geofence-radius");
         localStorage.removeItem("ltc-geofence-pre-arrive-window");
+        localStorage.removeItem("ltc-google-maps-api-key");
 
         state.settings = {
           geofenceRadius: 300,
-          preArriveWindow: 30
+          preArriveWindow: 30,
+          googleMapsApiKey: ""
         };
         saveState();
 
@@ -5442,12 +5608,14 @@ function renderSettings() {
         radiusLabel.textContent = "300";
         windowRange.value = "30";
         windowLabel.textContent = "30";
+        if (apiKeyInput) apiKeyInput.value = "";
 
         if (dataMode === "supabase") {
           try {
             await apiAction("update_system_settings", {
               radius: 300,
-              window: 30
+              window: 30,
+              googleMapsApiKey: ""
             });
             setFlash("地理圍欄自動打卡參數已恢復預設並同步！", "success");
           } catch (e) {
@@ -5484,6 +5652,64 @@ function renderReleases() {
     .join("");
 }
 
+async function checkAndShiftDelayedTrips() {
+  let stateChanged = false;
+  const today = todayKey();
+  
+  for (const trip of state.trips) {
+    if (trip.serviceDate !== today) continue;
+    if (trip.pickupTime || trip.status === "completed") continue;
+    if (!trip.scheduledPickup) continue;
+    
+    const [hours, minutes] = trip.scheduledPickup.split(":").map(Number);
+    const scheduledDate = new Date();
+    scheduledDate.setHours(hours, minutes, 0, 0);
+    
+    const diffMs = Date.now() - scheduledDate.getTime();
+    if (diffMs > 10 * 60_000) {
+      // Shift scheduledPickup by 10 minutes
+      const newScheduledDate = new Date(scheduledDate.getTime() + 10 * 60_000);
+      const newHours = String(newScheduledDate.getHours()).padStart(2, '0');
+      const newMinutes = String(newScheduledDate.getMinutes()).padStart(2, '0');
+      const oldPickup = trip.scheduledPickup;
+      trip.scheduledPickup = `${newHours}:${newMinutes}`;
+      
+      // Also shift scheduledDropoff by 10 minutes if exists
+      if (trip.scheduledDropoff) {
+        const [dHours, dMinutes] = trip.scheduledDropoff.split(":").map(Number);
+        const dropoffDate = new Date();
+        dropoffDate.setHours(dHours, dMinutes, 0, 0);
+        const newDropoffDate = new Date(dropoffDate.getTime() + 10 * 60_000);
+        const newDHours = String(newDropoffDate.getHours()).padStart(2, '0');
+        const newDMinutes = String(newDropoffDate.getMinutes()).padStart(2, '0');
+        trip.scheduledDropoff = `${newDHours}:${newDMinutes}`;
+      }
+      
+      stateChanged = true;
+      console.log(`[Delay Shift] Trip ${trip.id} shifted from ${oldPickup} to ${trip.scheduledPickup}`);
+      addNotification(`行程 ${trip.id} 發生延遲，預定接送時間已順延 10 分鐘至 ${trip.scheduledPickup}`, true);
+      
+      if (dataMode === "supabase") {
+        try {
+          await apiAction("update_trip_time", {
+            tripId: trip.id,
+            scheduledPickup: trip.scheduledPickup,
+            scheduledDropoff: trip.scheduledDropoff,
+            serviceDate: state.serviceDate
+          });
+        } catch (e) {
+          console.error("Failed to sync delayed trip shift to Supabase:", e);
+        }
+      }
+    }
+  }
+  
+  if (stateChanged) {
+    saveState();
+    render();
+  }
+}
+
 function updateClock() {
   const time = localTime();
   const dateStr = new Intl.DateTimeFormat("zh-TW", {
@@ -5497,6 +5723,8 @@ function updateClock() {
   if (target) {
     target.textContent = `${dateStr} ${time}`;
   }
+
+  checkAndShiftDelayedTrips().catch((err) => console.error("Error in checkAndShiftDelayedTrips:", err));
 }
 
 async function refreshCurrentData() {

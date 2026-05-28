@@ -552,10 +552,22 @@
               <input id="geofenceRadiusRange" type="range" min="100" max="1000" step="50" style="width: 100%;" />
             </label>
             <label style="display: flex; flex-direction: column; gap: 8px; font-weight: 700;">
-              <span>回程上車防誤觸時間限制：<strong id="geofenceWindowLabel" style="color: var(--brand); font-size: 18px;">30</strong> 分鐘</span>
+              <span>自動打卡預定時間限制閥值：<strong id="geofenceWindowLabel" style="color: var(--brand); font-size: 18px;">30</strong> 分鐘</span>
               <input id="geofenceWindowRange" type="range" min="5" max="180" step="5" style="width: 100%;" />
               <span class="subtext" style="font-weight: normal; color: var(--muted); font-size: 13px; line-height: 1.4; margin-top: 2px;">
-                司機抵達回程起點時，只有在預定上車時間前該分鐘內才會觸發自動上車打卡，避免上午送達去程目的地時誤觸。
+                只有在行程預定接送（上車）及送達（目的地）時間的正負指定分鐘內，才會觸發車輛自動打卡，避免非該班次時段的定位誤觸發。
+              </span>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-weight: 700; margin-top: 4px;">
+              <span>Google Maps API 金鑰 (用於高精度地址解析)：</span>
+              <div style="position: relative; display: flex; align-items: center; width: 100%;">
+                <input id="googleMapsApiKeyInput" type="password" placeholder="留空將使用 OSM Nominatim / 估算定位" style="width: 100%; padding-right: 44px; min-height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-card); color: var(--fg); padding-left: 12px; font-size: 14px;" />
+                <button type="button" id="toggleMapsApiKeyBtn" class="ghost-btn" style="position: absolute; right: 8px; min-height: 32px; width: 32px; padding: 0; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--muted); cursor: pointer;" title="切換顯示">
+                  <span class="material-symbols-outlined" style="font-size: 20px;">visibility_off</span>
+                </button>
+              </div>
+              <span class="subtext" style="font-weight: normal; color: var(--muted); font-size: 13px; line-height: 1.4; margin-top: 2px;">
+                填入後，系統將使用 Google Maps Geocoding API 將個案地址精準轉換為經緯度，徹底解決定位偏移問題。
               </span>
             </label>
             <div style="display: flex; gap: 12px; margin-top: 8px;">
