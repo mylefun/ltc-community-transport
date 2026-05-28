@@ -18,6 +18,7 @@ const coordinatorActions = new Set([
   "create_schedule_override",
   "delete_schedule_override",
   "import_schedules",
+  "update_system_settings",
 ]);
 
 function coordinatorPasscode() {
@@ -312,6 +313,19 @@ async function readState(serviceDate = todayKey()) {
   await syncSchedulesForDate(serviceDate, schedules, cases, drivers);
   const trips = await supabase(`daily_rides?select=*&service_date=eq.${serviceDate}&order=scheduled_pickup.asc`);
 
+  let settings = { geofenceRadius: 300, preArriveWindow: 30 };
+  try {
+    const rawSettings = await supabase("system_settings?select=*");
+    if (Array.isArray(rawSettings)) {
+      rawSettings.forEach((s) => {
+        if (s.key === "geofence_radius") settings.geofenceRadius = Number(s.value);
+        if (s.key === "geofence_pre_arrive_window") settings.preArriveWindow = Number(s.value);
+      });
+    }
+  } catch (err) {
+    console.warn("[API] Failed to fetch system_settings, using defaults:", err.message);
+  }
+
   return {
     serviceDate,
     drivers: drivers.map(mapDriver),
@@ -320,6 +334,7 @@ async function readState(serviceDate = todayKey()) {
     trips: trips.map(mapTrip),
     driverLocations: mapLocations(locations),
     events: [],
+    settings,
     backend: "supabase",
   };
 }
@@ -796,6 +811,22 @@ async function handleAction(action, payload = {}) {
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({ date_overrides: filtered }),
     });
+  }
+
+  if (action === "update_system_settings") {
+    const radius = String(payload.radius || "300");
+    const window = String(payload.window || "30");
+
+    await Promise.all([
+      supabase("system_settings?key=eq.geofence_radius", {
+        method: "PATCH",
+        body: JSON.stringify({ value: radius }),
+      }),
+      supabase("system_settings?key=eq.geofence_pre_arrive_window", {
+        method: "PATCH",
+        body: JSON.stringify({ value: window }),
+      })
+    ]);
   }
 
   if (action === "pickup") {

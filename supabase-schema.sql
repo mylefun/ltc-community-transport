@@ -741,3 +741,18 @@ where d.active = true;
 
 alter table public.drivers
   drop column if exists route_label;
+
+-- 系統設定表 (用於儲存雲端統一同步參數)
+create table if not exists public.system_settings (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz not null default now()
+);
+
+-- 預設插入自動打卡參數
+insert into public.system_settings (key, value)
+values
+  ('geofence_radius', '300'),
+  ('geofence_pre_arrive_window', '30')
+on conflict (key) do nothing;
+

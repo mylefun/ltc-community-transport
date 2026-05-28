@@ -537,6 +537,33 @@
           </div>
           <p class="subtext">此設定只保存在目前這台裝置與瀏覽器，不會影響其他使用者。</p>
         </div>
+
+        <!-- 地理圍欄自動打卡設定區塊 (承辦人解鎖後可見) -->
+        <div id="geofenceSettingsPanel" class="geofence-settings-panel" style="margin-top: 32px; border-top: 1px dashed var(--line); padding-top: 24px;" hidden>
+          <div class="section-heading" style="margin-bottom: 16px;">
+            <div>
+              <p class="eyebrow">系統管理 (承辦人限定)</p>
+              <h3><span class="section-icon material-symbols-outlined" aria-hidden="true">settings_input_antenna</span>地理圍欄自動打卡設定</h3>
+            </div>
+          </div>
+          <div style="display: grid; gap: 20px; max-width: 500px;">
+            <label style="display: flex; flex-direction: column; gap: 8px; font-weight: 700;">
+              <span>自動打卡偵測半徑：<strong id="geofenceRadiusLabel" style="color: var(--brand); font-size: 18px;">300</strong> 公尺</span>
+              <input id="geofenceRadiusRange" type="range" min="100" max="1000" step="50" style="width: 100%;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-weight: 700;">
+              <span>回程上車防誤觸時間限制：<strong id="geofenceWindowLabel" style="color: var(--brand); font-size: 18px;">30</strong> 分鐘</span>
+              <input id="geofenceWindowRange" type="range" min="5" max="180" step="5" style="width: 100%;" />
+              <span class="subtext" style="font-weight: normal; color: var(--muted); font-size: 13px; line-height: 1.4; margin-top: 2px;">
+                司機抵達回程起點時，只有在預定上車時間前該分鐘內才會觸發自動上車打卡，避免上午送達去程目的地時誤觸。
+              </span>
+            </label>
+            <div style="display: flex; gap: 12px; margin-top: 8px;">
+              <button class="primary-btn" id="geofenceSettingsSaveBtn" type="button" style="min-height: 40px; padding: 0 20px;">儲存設定</button>
+              <button class="ghost-btn" id="geofenceSettingsResetBtn" type="button" style="min-height: 40px; padding: 0 20px;">恢復預設</button>
+            </div>
+          </div>
+        </div>
       </section>
     </template>
 

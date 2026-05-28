@@ -68,6 +68,14 @@ const communitySites = [
 
 const releaseNotes = [
   {
+    version: "v0.9.2",
+    date: "2026-05-28",
+    items: [
+      "調整地理圍欄自動打卡偵測半徑由 100 公尺擴大至 300 公尺，提升定位偵測靈敏度",
+      "優化同日來回行程的自動上車判定：增設預定上車前 30 分鐘時間段過濾，防範早上去程送達時誤觸下午回程自動上車",
+    ],
+  },
+  {
     version: "v0.9.1",
     date: "2026-05-26",
     items: [
@@ -309,7 +317,8 @@ let flashScope = "global";
 let flashTimeout = null;
 
 // === Geofence Auto Check-in State ===
-const GEOFENCE_RADIUS_METERS = 100; // 觸發圍欄半徑（公尺）
+let GEOFENCE_RADIUS_METERS = Number(localStorage.getItem("ltc-geofence-radius") || "300"); // 觸發圍欄半徑（公尺）
+let GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = Number(localStorage.getItem("ltc-geofence-pre-arrive-window") || "30"); // 允許提前偵測上車的最大時間（分鐘）
 const GEOFENCE_COUNTDOWN_SECONDS = 5; // 自動確認倒數秒數
 let geofenceWatchId = null;        // watchPosition 的 ID，登出時清除
 let geofenceAlerted = new Set();   // 已觸發通知的 tripId+type key，避免重複觸發
@@ -805,6 +814,18 @@ function normalizeState(value) {
     ...next.driverLocations,
   };
 
+  // 同步地理圍欄系統參數至運行變數，實現全系統即時同步
+  if (value.settings) {
+    next.settings = {
+      geofenceRadius: Number(value.settings.geofenceRadius || value.settings.geofence_radius || 300),
+      preArriveWindow: Number(value.settings.preArriveWindow || value.settings.pre_arrive_window || 30)
+    };
+    GEOFENCE_RADIUS_METERS = next.settings.geofenceRadius;
+    GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = next.settings.preArriveWindow;
+  } else {
+    next.settings = { geofenceRadius: 300, preArriveWindow: 30 };
+  }
+
   return next;
 }
 
@@ -1151,6 +1172,7 @@ function defaultState() {
     schedules: [],
     driverLocations: seedDriverLocations(drivers, trips),
     events: [],
+    settings: { geofenceRadius: 300, preArriveWindow: 30 },
   };
 }
 
@@ -5142,6 +5164,16 @@ function checkGeofenceTriggers(lat, lng, driverId) {
     if (tripStatus === "scheduled" || tripStatus === "late") {
       // 等待接客 → 比對上車地址
       if (!trip.pickupTime) {
+        // 防誤觸同日來回之過早行程：若距離預定上車時間超過指定時間（如 30 分鐘），跳過此行程的自動上車偵測
+        if (trip.scheduledPickup && trip.serviceDate) {
+          const [year, month, day] = trip.serviceDate.split("-").map(Number);
+          const [sHours, sMinutes] = trip.scheduledPickup.split(":").map(Number);
+          const scheduledTime = new Date(year, month - 1, day, sHours, sMinutes, 0, 0);
+          const timeDiffMinutes = (scheduledTime.getTime() - Date.now()) / (60 * 1000);
+          if (timeDiffMinutes > GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES) {
+            continue; // 還沒到合理的時間段，跳過自動偵測
+          }
+        }
         targetAddress = trip.pickupAddress || person?.pickupAddress || "";
         eventType = "pickup";
       }
@@ -5159,8 +5191,8 @@ function checkGeofenceTriggers(lat, lng, driverId) {
     const coord = resolveGeofenceCoord(targetAddress);
     if (!coord) continue;
 
-    // 若座標是估算值（住家地址），使用較寬鬆的 200m 半徑
-    const radius = coord.estimated ? 200 : GEOFENCE_RADIUS_METERS;
+    // 若座標是估算值（住家地址），使用較寬鬆的 300m 半徑
+    const radius = coord.estimated ? 300 : GEOFENCE_RADIUS_METERS;
     const distanceM = haversineDistanceM(lat, lng, coord.lat, coord.lng);
 
     if (distanceM <= radius) {
@@ -5339,6 +5371,97 @@ function renderSettings() {
     label.textContent = "100%";
     applyFontScale();
   });
+
+  // 承辦人專屬地理圍欄自訂打卡參數設定
+  const geofencePanel = document.getElementById("geofenceSettingsPanel");
+  if (geofencePanel) {
+    if (coordinatorUnlocked) {
+      geofencePanel.removeAttribute("hidden");
+
+      const radiusRange = document.getElementById("geofenceRadiusRange");
+      const radiusLabel = document.getElementById("geofenceRadiusLabel");
+      const windowRange = document.getElementById("geofenceWindowRange");
+      const windowLabel = document.getElementById("geofenceWindowLabel");
+
+      radiusRange.value = String(GEOFENCE_RADIUS_METERS);
+      radiusLabel.textContent = String(GEOFENCE_RADIUS_METERS);
+      windowRange.value = String(GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES);
+      windowLabel.textContent = String(GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES);
+
+      radiusRange.addEventListener("input", () => {
+        radiusLabel.textContent = radiusRange.value;
+      });
+
+      windowRange.addEventListener("input", () => {
+        windowLabel.textContent = windowRange.value;
+      });
+
+      document.getElementById("geofenceSettingsSaveBtn").addEventListener("click", async () => {
+        GEOFENCE_RADIUS_METERS = Number(radiusRange.value);
+        GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = Number(windowRange.value);
+
+        localStorage.setItem("ltc-geofence-radius", String(GEOFENCE_RADIUS_METERS));
+        localStorage.setItem("ltc-geofence-pre-arrive-window", String(GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES));
+
+        state.settings = {
+          geofenceRadius: GEOFENCE_RADIUS_METERS,
+          preArriveWindow: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES
+        };
+        saveState();
+
+        if (dataMode === "supabase") {
+          try {
+            await apiAction("update_system_settings", {
+              radius: GEOFENCE_RADIUS_METERS,
+              window: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES
+            });
+            setFlash("地理圍欄自動打卡參數已成功同步至雲端！", "success");
+          } catch (e) {
+            console.error("Failed to sync settings to Supabase:", e);
+            setFlash("參數已儲存至本機，但雲端同步失敗：" + e.message, "error");
+          }
+        } else {
+          setFlash("地理圍欄自動打卡參數已儲存於本機！", "success");
+        }
+      });
+
+      document.getElementById("geofenceSettingsResetBtn").addEventListener("click", async () => {
+        GEOFENCE_RADIUS_METERS = 300;
+        GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES = 30;
+
+        localStorage.removeItem("ltc-geofence-radius");
+        localStorage.removeItem("ltc-geofence-pre-arrive-window");
+
+        state.settings = {
+          geofenceRadius: 300,
+          preArriveWindow: 30
+        };
+        saveState();
+
+        radiusRange.value = "300";
+        radiusLabel.textContent = "300";
+        windowRange.value = "30";
+        windowLabel.textContent = "30";
+
+        if (dataMode === "supabase") {
+          try {
+            await apiAction("update_system_settings", {
+              radius: 300,
+              window: 30
+            });
+            setFlash("地理圍欄自動打卡參數已恢復預設並同步！", "success");
+          } catch (e) {
+            console.error("Failed to reset settings in Supabase:", e);
+            setFlash("已還原預設，但雲端同步失敗：" + e.message, "error");
+          }
+        } else {
+          setFlash("地理圍欄自動打卡參數已恢復預設！", "success");
+        }
+      });
+    } else {
+      geofencePanel.setAttribute("hidden", "true");
+    }
+  }
 }
 
 function renderReleases() {
