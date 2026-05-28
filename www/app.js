@@ -5564,6 +5564,10 @@ function renderSettings() {
         localStorage.setItem("ltc-geofence-pre-arrive-window", String(GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES));
         localStorage.setItem("ltc-google-maps-api-key", GOOGLE_MAPS_API_KEY);
 
+        // 每次金鑰或設定變更時，自動清空舊的經緯度快取，強制用新的 Google API 重新高精度解析
+        localStorage.removeItem("shuttle_geocoding_cache");
+        geocodingCache = {};
+
         state.settings = {
           geofenceRadius: GEOFENCE_RADIUS_METERS,
           preArriveWindow: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES,
@@ -5578,13 +5582,13 @@ function renderSettings() {
               window: GEOFENCE_PRE_ARRIVE_WINDOW_MINUTES,
               googleMapsApiKey: GOOGLE_MAPS_API_KEY
             });
-            setFlash("地理圍欄參數與 Google API 金鑰已成功同步至雲端！", "success");
+            setFlash("地理圍欄參數與 Google API 金鑰已成功同步至雲端，且地址快取已刷新！", "success");
           } catch (e) {
             console.error("Failed to sync settings to Supabase:", e);
             setFlash("參數已儲存至本機，但雲端同步失敗：" + e.message, "error");
           }
         } else {
-          setFlash("地理圍欄自動打卡參數已儲存於本機！", "success");
+          setFlash("地理圍欄自動打卡參數已儲存於本機，且地址快取已刷新！", "success");
         }
       });
 
@@ -5596,6 +5600,10 @@ function renderSettings() {
         localStorage.removeItem("ltc-geofence-radius");
         localStorage.removeItem("ltc-geofence-pre-arrive-window");
         localStorage.removeItem("ltc-google-maps-api-key");
+        
+        // 恢復預設時，同步清空快取
+        localStorage.removeItem("shuttle_geocoding_cache");
+        geocodingCache = {};
 
         state.settings = {
           geofenceRadius: 300,
