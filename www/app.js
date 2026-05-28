@@ -30,6 +30,7 @@ const coordinatorActions = new Set([
   "create_schedule_override",
   "delete_schedule_override",
   "import_schedules",
+  "update_system_settings",
 ]);
 
 const statusLabels = {
