@@ -2848,7 +2848,7 @@ async function updateLeafletData() {
 
   // Pre-fetch/geocode any addresses that are not in cache or communitySites
   const pendingAddresses = new Set();
-  activeTrips.forEach((trip) => {
+  todayTrips().forEach((trip) => {
     const person = getCase(trip.caseId);
     if (!person) return;
     const pickupAddr = trip.pickupAddress || person.pickupAddress || "";
@@ -2988,10 +2988,10 @@ async function updateLeafletData() {
     // Draw polyline: use OSRM road geometry if available, else straight line
     const polylineCoords = roadCoords ?? waypoints.map((wp) => wp.latLng);
     const polyline = L.polyline(polylineCoords, {
-      color: routeColor,
-      weight: routeWeight,
-      dashArray: routeDash,
-      opacity: 0.88,
+      color: "#ff0000",      // 粗體紅色實線
+      weight: 6,             // 粗體 (6px)
+      dashArray: null,       // 實線
+      opacity: 0.95,
       lineJoin: "round",
       lineCap: "round",
     });
@@ -3282,8 +3282,9 @@ async function geocodeAddress(address) {
     });
     if (response.ok) {
       const resData = await response.json();
-      if (resData && resData.lat && resData.lng) {
-        result = { lat: resData.lat, lng: resData.lng };
+      const geoResult = resData.state;
+      if (geoResult && geoResult.lat && geoResult.lng) {
+        result = { lat: geoResult.lat, lng: geoResult.lng };
         console.log(`[Geocode] Successfully geocoded "${cleanAddr}" via server-side API:`, result);
       }
     }
