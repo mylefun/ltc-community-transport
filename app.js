@@ -4576,6 +4576,8 @@ function renderDriverWorkspace() {
   // 如果已經有全域 currentDriverGps 定位快取，立即將定位渲染到卡片中，讓司機有連貫感
   if (currentDriverGps) {
     updateGpsStatusCardDom(currentDriverGps.lat, currentDriverGps.lng, currentDriverGps.accuracy);
+  } else {
+    updateGpsStatusCardDom(null, null, null);
   }
 
   // 移除舊的監聽器再重新綁定，避免每次重渲染後累積多個 listener
@@ -4620,9 +4622,9 @@ function renderDriverTask(trip) {
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
             <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
               <span style="color: var(--brand); font-weight: bold; font-size: 16px; margin-top: 1px;">•</span>
-              <div style="flex: 1; min-width: 0;">
-                <span style="font-weight: 800; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
-                ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; display: inline-block; margin-top: 2px;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
+              <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="font-weight: 800; color: var(--ink); display: inline-block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledPickup)} ${escapeHTML(pickupAlias)}</span>
+                ${pickupActualText ? `<span style="color: var(--brand); font-weight: 800; font-size: 12px; display: inline-block; white-space: nowrap;">已接 ${escapeHTML(trip.pickupTime)}</span>` : ""}
               </div>
             </div>
             <button class="primary-btn" type="button" data-action="pickup" data-trip-id="${escapeHTML(trip.id)}" ${pickupDisabled} style="padding: 6px 14px; min-height: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; gap: 4px; box-shadow: none; flex-shrink: 0;" title="已接到個案" aria-label="已接到個案">
@@ -4634,9 +4636,9 @@ function renderDriverTask(trip) {
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
             <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
               <span style="color: var(--muted); font-weight: bold; font-size: 16px; margin-top: 1px;">▪</span>
-              <div style="flex: 1; min-width: 0;">
-                <span style="font-weight: 800; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
-                ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; display: inline-block; margin-top: 2px;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
+              <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="font-weight: 800; color: var(--ink); display: inline-block; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(trip.scheduledDropoff)} ${escapeHTML(dropoffAlias)}</span>
+                ${dropoffActualText ? `<span style="color: var(--green, #2e7d32); font-weight: 800; font-size: 12px; display: inline-block; white-space: nowrap;">已送達 ${escapeHTML(trip.dropoffTime)}</span>` : ""}
               </div>
             </div>
             <button class="secondary-btn" type="button" data-action="dropoff" data-trip-id="${escapeHTML(trip.id)}" ${dropoffDisabled} style="padding: 6px 14px; min-height: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; gap: 4px; box-shadow: none; flex-shrink: 0;" title="已送達目的地" aria-label="已送達目的地">
@@ -4962,7 +4964,7 @@ function updateDriverLocation(driverId, tripId, eventType, updatedAt, location) 
  * 將地址解析為座標（公尺精度）
  * 優先查找 communitySites，其次用 resolveCoordinate 估算
  */
-function resolveGeofenceCoord(address) {
+function resolveGeofenceCoord(address, trip = null, type = "pickup") {
   if (!address) return null;
   const realAddr = getAddressReal(address);
   // 1. 優先比對社區據點（有精確 lat/lng）
@@ -4980,7 +4982,15 @@ function resolveGeofenceCoord(address) {
   });
   if (site) return { lat: site.lat, lng: site.lng };
 
-  // 2. 嘗試用現有 resolveCoordinate 估算（適用住家地址）
+  // 2. 優先比對行程與地圖/派單一致的 resolveCoordinate
+  if (trip) {
+    const estimated = resolveCoordinate(address, trip.caseId, type);
+    if (estimated && estimated.lat && estimated.lng) {
+      return { lat: estimated.lat, lng: estimated.lng, estimated: true };
+    }
+  }
+
+  // 3. 嘗試用現有 resolveCoordinate 估算
   const estimated = resolveCoordinate(realAddr, "", "geofence");
   // 若估算結果明顯錯誤（零值），回傳 null
   if (!estimated || !estimated.lat || !estimated.lng) return null;
@@ -5099,24 +5109,27 @@ function updateGpsStatusCardDom(lat, lng, accuracy) {
 
   if (!dot) return;
 
-  if (accuracy <= 20) {
-    dot.style.background = "#10b981";
-    dot.className = "gps-status-dot pulse active-green";
-    accuracyLabel.textContent = `精準定位 (±${Math.round(accuracy)}m)`;
-    accuracyLabel.style.color = "#10b981";
-  } else if (accuracy <= 200) {
-    dot.style.background = "#f59e0b";
-    dot.className = "gps-status-dot pulse active-orange";
-    accuracyLabel.textContent = `一般定位 (±${Math.round(accuracy)}m)`;
-    accuracyLabel.style.color = "#f59e0b";
+  if (lat !== null && lng !== null && accuracy !== null) {
+    if (accuracy <= 20) {
+      dot.style.background = "#10b981";
+      dot.className = "gps-status-dot pulse active-green";
+      accuracyLabel.textContent = `精準定位 (±${Math.round(accuracy)}m)`;
+      accuracyLabel.style.color = "#10b981";
+    } else if (accuracy <= 200) {
+      dot.style.background = "#f59e0b";
+      dot.className = "gps-status-dot pulse active-orange";
+      accuracyLabel.textContent = `一般定位 (±${Math.round(accuracy)}m)`;
+      accuracyLabel.style.color = "#f59e0b";
+    } else {
+      dot.style.background = "#ef4444";
+      dot.className = "gps-status-dot pulse active-red";
+      accuracyLabel.textContent = `訊號不佳 (±${Math.round(accuracy)}m)`;
+      accuracyLabel.style.color = "#ef4444";
+    }
+    coordsText.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   } else {
-    dot.style.background = "#ef4444";
-    dot.className = "gps-status-dot pulse active-red";
-    accuracyLabel.textContent = `訊號不佳 (±${Math.round(accuracy)}m)`;
-    accuracyLabel.style.color = "#ef4444";
+    coordsText.textContent = "-";
   }
-
-  coordsText.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
   if (!activeDriverId) return;
   const myTrips = todayTrips().filter((trip) => trip.driverId === activeDriverId && getTripStatus(trip) !== "completed");
@@ -5151,7 +5164,7 @@ function updateGpsStatusCardDom(lat, lng, accuracy) {
 
   if (targetAddress && tripTarget) {
     targetName.textContent = targetLabel;
-    const coord = resolveGeofenceCoord(targetAddress);
+    const coord = resolveGeofenceCoord(targetAddress, tripTarget, targetEventType);
     
     if (coord) {
       if (coord.estimated) {
@@ -5164,8 +5177,12 @@ function updateGpsStatusCardDom(lat, lng, accuracy) {
         targetTypeLabel.style.color = "#059669";
       }
 
-      const distanceM = haversineDistanceM(lat, lng, coord.lat, coord.lng);
-      targetDistanceText.textContent = `距離目標：${Math.round(distanceM)} 公尺`;
+      if (lat !== null && lng !== null) {
+        const distanceM = haversineDistanceM(lat, lng, coord.lat, coord.lng);
+        targetDistanceText.textContent = `距離目標：${Math.round(distanceM)} 公尺`;
+      } else {
+        targetDistanceText.textContent = `距離目標：- 公尺 (請點擊模擬抵達)`;
+      }
       
       simulateBtn.disabled = false;
       
@@ -5220,6 +5237,7 @@ function triggerGpsManualUpdate() {
         refreshBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">refresh</span> 重新定位';
         refreshBtn.disabled = false;
         addNotification(`定位更新失敗：${error.message}`, false);
+        updateGpsStatusCardDom(null, null, null);
       },
       { enableHighAccuracy: true, timeout: 5000 }
     );
@@ -5262,6 +5280,7 @@ function startGeofenceWatcher(driverId) {
         label.textContent = `定位失敗: ${error.message}`;
         label.style.color = "#ef4444";
       }
+      updateGpsStatusCardDom(null, null, null);
     },
     {
       enableHighAccuracy: true,
@@ -5339,7 +5358,7 @@ function checkGeofenceTriggers(lat, lng, driverId) {
     const alertKey = `${trip.id}::${eventType}`;
     if (geofenceAlerted.has(alertKey)) continue; // 已觸發過，跳過
 
-    const coord = resolveGeofenceCoord(targetAddress);
+    const coord = resolveGeofenceCoord(targetAddress, trip, eventType);
     if (!coord) continue;
 
     // 若座標是估算值（住家地址），使用較寬鬆的 300m 半徑

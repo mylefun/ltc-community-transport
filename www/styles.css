@@ -384,6 +384,7 @@ button {
   transition: transform 0.18s ease;
   container-type: inline-size;
   container-name: main;
+  overflow-x: hidden;
 }
 
 body.pulling .main-area,
@@ -770,7 +771,7 @@ body.coordinator-unlocked .topbar-nav-btn {
 
 .dispatch-shell {
   display: grid;
-  grid-template-columns: minmax(360px, 0.88fr) minmax(0, 1.12fr);
+  grid-template-columns: minmax(280px, 0.88fr) minmax(0, 1.12fr);
   gap: 24px;
   align-items: start;
 }
@@ -1023,6 +1024,7 @@ body.coordinator-unlocked .topbar-nav-btn {
   border-radius: 14px;
   box-shadow: var(--shadow-soft);
   cursor: default;
+  max-width: calc(100% - 24px);
 }
 
 .map-control-btn,
@@ -2650,7 +2652,7 @@ body[data-view="driver"] .task-actions button {
 
 }
 
-@container main (max-width: 900px) {
+@container main (max-width: 1080px) {
   .summary-grid {
     margin-inline: -2px;
   }
