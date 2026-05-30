@@ -4551,8 +4551,8 @@ function renderDriverWorkspace() {
       <button class="ghost-btn" type="button" id="driverLogoutBtn" style="font-size: calc(14px * var(--user-font-scale));">登出</button>
     </section>
     
-    <!-- GPS 診斷與模擬狀態卡片 -->
-    ${renderGpsStatusCard()}
+    <!-- GPS 診斷與模擬狀態卡片 (限承辦人解鎖後使用) -->
+    ${coordinatorUnlocked ? renderGpsStatusCard() : ""}
 
     <section class="driver-task-list">
       ${tasks.length ? tasks.map(renderDriverTask).join("") : '<div class="empty-state">目前沒有指派給你的接送班次。</div>'}
