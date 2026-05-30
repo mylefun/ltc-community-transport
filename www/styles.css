@@ -3671,11 +3671,16 @@ body[data-view="home"] .notification-container {
 /* Mobile adjustments for geofence toast */
 @media (max-width: 860px) {
   .geofence-toast {
-    bottom: 110px; /* above bottom nav bar */
+    bottom: 20px;
     left: 16px;
     right: 16px;
     width: auto;
     transform: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    text-align: center;
     animation: geofence-slide-up-mobile 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
@@ -3690,15 +3695,25 @@ body[data-view="home"] .notification-container {
     }
   }
 
+  .geofence-toast-body {
+    align-items: center;
+    width: 100%;
+  }
+
+  .geofence-toast-sub {
+    margin-bottom: 12px;
+  }
+
   .geofence-toast-actions {
     flex-direction: row;
-    align-self: stretch;
-    align-items: center;
+    width: 100%;
+    gap: 10px;
   }
 
   .geofence-confirm-btn,
   .geofence-dismiss-btn {
     flex: 1;
+    min-height: 40px;
   }
 }
 
